@@ -1,0 +1,59 @@
+# Data and results (downloaded/generated on server)
+data/*
+results/*
+checkpoints/*
+
+# Keep the directories with .gitkeep
+!data/.gitkeep
+!results/.gitkeep
+!checkpoints/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Cached model files (if any local testing)
+*.pt
+*.bin
+*.safetensors

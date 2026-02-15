@@ -1,0 +1,33 @@
+# Default configuration for AGNews experiments
+
+dataset:
+  name: agnews
+  n_train: 600
+  n_test: 1000
+
+model:
+  name: gpt2-xl
+  # max_memory:
+  #   0: "10GiB"  # GPU 0
+  #   cpu: "30GiB"
+
+experiment:
+  n_shots_list: [0, 1, 4, 8]
+  n_train_list: [10, 20, 40, 80, 200, 400, 600]
+  n_seeds: 10
+  n_bootstrap: 100
+
+calibration:
+  methods:
+    - no_calibration
+    - content_free
+    - ucpa_naive
+    - ucpa
+    - sucpa_naive
+    - sucpa
+
+output:
+  dir: results/experiments
+  save_probabilities: true
+
+seed: 42

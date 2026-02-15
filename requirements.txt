@@ -1,0 +1,21 @@
+# Core ML
+torch>=2.0.0
+transformers>=4.34.0
+accelerate>=0.21.0
+
+# Data
+datasets
+
+# Scientific computing
+numpy
+pandas
+scipy
+scikit-learn
+
+# Visualization
+matplotlib
+seaborn
+
+# Utilities
+tqdm
+pyyaml
