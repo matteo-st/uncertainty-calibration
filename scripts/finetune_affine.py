@@ -4,9 +4,10 @@ Step 1: Finetune LLM posteriors with Affine Calibration.
 
 This script:
 1. Loads the base LLM (GPT-2 XL) OR loads cached probabilities
-2. Extracts raw probabilities on training data (cached for reuse)
-3. Fits AffineCalibrator (learns α and β parameters)
-4. Saves calibration parameters to a checkpoint file
+2. Extracts raw probabilities on training data (600 samples) and test data (1000 samples)
+3. Fits AffineCalibrator on training data (learns α and β parameters)
+4. Reports metrics (Accuracy, ECE, Cross-Entropy) on TEST set before/after calibration
+5. Saves calibration parameters to a checkpoint file
 
 The checkpoint can then be loaded by run_uncertainty_calibration.py
 to get calibrated probabilities for uncertainty score experiments.
@@ -42,8 +43,8 @@ def parse_args():
     # Data sizes
     parser.add_argument("--n_train", type=int, default=600,
                         help="Number of samples for training affine calibration")
-    parser.add_argument("--n_val", type=int, default=200,
-                        help="Number of samples for validation")
+    parser.add_argument("--n_test", type=int, default=1000,
+                        help="Number of test samples for metric reporting")
 
     # Few-shot settings
     parser.add_argument("--n_shots", type=int, default=0,
@@ -147,7 +148,7 @@ def main():
     logger.info(f"Model: {args.model}")
     logger.info(f"Dataset: {args.dataset}")
     logger.info(f"Training samples: {args.n_train}")
-    logger.info(f"Validation samples: {args.n_val}")
+    logger.info(f"Test samples: {args.n_test}")
     logger.info(f"Shots: {args.n_shots}")
     logger.info(f"Learn alpha: {args.learn_alpha}")
     logger.info(f"Seed: {args.seed}")
@@ -158,21 +159,21 @@ def main():
         cache_dir, args.dataset, args.model, "finetune_train",
         args.n_train, args.n_shots, args.seed
     )
-    val_cache_path = get_cache_path(
-        cache_dir, args.dataset, args.model, "finetune_val",
-        args.n_val, args.n_shots, args.seed
+    test_cache_path = get_cache_path(
+        cache_dir, args.dataset, args.model, "test",
+        args.n_test, args.n_shots, args.seed
     )
 
     # Try to load cached probabilities
     train_probs_raw, train_labels, train_indices, train_meta = None, None, None, None
-    val_probs_raw, val_labels, val_meta = None, None, None
+    test_probs_raw, test_labels, test_meta = None, None, None
 
     if not args.no_cache:
         train_probs_raw, train_labels, train_indices, train_meta = load_cached_probabilities(train_cache_path, logger)
-        val_probs_raw, val_labels, _, val_meta = load_cached_probabilities(val_cache_path, logger)
+        test_probs_raw, test_labels, _, test_meta = load_cached_probabilities(test_cache_path, logger)
 
     # Determine if we need to load the model
-    need_model = train_probs_raw is None or val_probs_raw is None
+    need_model = train_probs_raw is None or test_probs_raw is None
 
     classifier = None
     if need_model:
@@ -182,11 +183,11 @@ def main():
         logger.info("\nUsing cached probabilities - skipping model loading")
 
     # Load dataset
-    total_needed = args.n_train + args.n_val + args.n_shots + 100
+    total_needed = args.n_train + args.n_shots + 100
     dataset = load_dataset_by_name(
         args.dataset,
         n_train=total_needed,
-        n_test=args.n_val,  # Use test split for validation
+        n_test=args.n_test,
         seed=args.seed,
     )
     logger.info(f"Dataset loaded: {len(dataset.train_texts)} train, {len(dataset.test_texts)} test")
@@ -205,7 +206,7 @@ def main():
     logger.info(f"\nData split:")
     logger.info(f"  Shots: {len(shot_indices)}")
     logger.info(f"  Train (for affine cal): {len(train_indices)}")
-    logger.info(f"  Validation: {len(dataset.test_texts)}")
+    logger.info(f"  Test (for metrics): {len(dataset.test_texts)}")
 
     # Build preface with shots
     preface = dataset.get_few_shot_preface(
@@ -288,59 +289,60 @@ def main():
     logger.info(f"  ECE: {cal_metrics.ece:.4f}")
     logger.info(f"  Cross-Entropy: {cal_metrics.cross_entropy:.4f}")
 
-    # Validate on held-out data (from cache or inference)
-    if val_probs_raw is None:
-        logger.info("\nExtracting probabilities on validation data...")
-        val_prompts = dataset.build_prompts_for_split(preface, split="test")
-        val_probs_raw = classifier.get_batch_label_probabilities(
-            val_prompts,
+    # Get test set probabilities (from cache or inference)
+    if test_probs_raw is None:
+        logger.info("\nExtracting probabilities on test data...")
+        test_prompts = dataset.build_prompts_for_split(preface, split="test")
+        test_probs_raw = classifier.get_batch_label_probabilities(
+            test_prompts,
             dataset.label_names,
             show_progress=True,
         )
-        val_labels = np.array(dataset.test_labels)
+        test_labels = np.array(dataset.test_labels)
 
         # Cache the probabilities with full metadata
         if not args.no_cache:
-            val_metadata = {
+            test_metadata = {
                 "dataset": args.dataset,
                 "model": args.model,
-                "split": "finetune_val",
-                "n_samples": args.n_val,
+                "split": "test",
+                "n_samples": args.n_test,
                 "n_shots": args.n_shots,
                 "seed": args.seed,
                 "label_names": dataset.label_names,
                 "preface": preface,
-                "description": "Raw LLM probabilities BEFORE affine calibration",
+                "description": "Raw LLM probabilities BEFORE affine calibration (test set)",
             }
             save_probabilities_cache(
-                val_cache_path, val_probs_raw, val_labels,
-                np.arange(len(val_labels)), val_metadata, logger
+                test_cache_path, test_probs_raw, test_labels,
+                np.arange(len(test_labels)), test_metadata, logger
             )
     else:
-        logger.info("\nUsing cached validation probabilities")
+        logger.info("\nUsing cached test probabilities")
 
-    # Raw performance on validation
-    val_raw_metrics = compute_metrics(val_probs_raw, val_labels)
-    logger.info("\nRaw model performance on validation:")
-    logger.info(f"  Accuracy: {val_raw_metrics.accuracy:.4f}")
-    logger.info(f"  Error Rate: {val_raw_metrics.error_rate:.4f}")
-    logger.info(f"  ECE: {val_raw_metrics.ece:.4f}")
-    logger.info(f"  Cross-Entropy: {val_raw_metrics.cross_entropy:.4f}")
+    # Raw performance on TEST set
+    test_raw_metrics = compute_metrics(test_probs_raw, test_labels)
+    logger.info(f"\nRaw model performance on TEST SET (N={len(test_labels)}):")
+    logger.info(f"  Accuracy: {test_raw_metrics.accuracy:.4f}")
+    logger.info(f"  Error Rate: {test_raw_metrics.error_rate:.4f}")
+    logger.info(f"  ECE: {test_raw_metrics.ece:.4f}")
+    logger.info(f"  Cross-Entropy: {test_raw_metrics.cross_entropy:.4f}")
 
-    # Calibrated performance on validation
-    val_probs_cal = calibrator.calibrate(val_probs_raw)
-    val_cal_metrics = compute_metrics(val_probs_cal, val_labels)
-    logger.info("\nCalibrated performance on validation:")
-    logger.info(f"  Accuracy: {val_cal_metrics.accuracy:.4f}")
-    logger.info(f"  Error Rate: {val_cal_metrics.error_rate:.4f}")
-    logger.info(f"  ECE: {val_cal_metrics.ece:.4f}")
-    logger.info(f"  Cross-Entropy: {val_cal_metrics.cross_entropy:.4f}")
+    # Calibrated performance on TEST set
+    test_probs_cal = calibrator.calibrate(test_probs_raw)
+    test_cal_metrics = compute_metrics(test_probs_cal, test_labels)
+    logger.info(f"\nCalibrated performance on TEST SET (N={len(test_labels)}):")
+    logger.info(f"  Accuracy: {test_cal_metrics.accuracy:.4f}")
+    logger.info(f"  Error Rate: {test_cal_metrics.error_rate:.4f}")
+    logger.info(f"  ECE: {test_cal_metrics.ece:.4f}")
+    logger.info(f"  Cross-Entropy: {test_cal_metrics.cross_entropy:.4f}")
 
     # Save checkpoint
     checkpoint = {
         "model_name": args.model,
         "dataset": args.dataset,
         "n_train": args.n_train,
+        "n_test": args.n_test,
         "n_shots": args.n_shots,
         "seed": args.seed,
         "preface": preface,
@@ -353,10 +355,8 @@ def main():
         },
         "loss_history": [float(l) for l in calibrator.loss_history],
         "metrics": {
-            "train_raw": raw_metrics.to_dict(),
-            "train_calibrated": cal_metrics.to_dict(),
-            "val_raw": val_raw_metrics.to_dict(),
-            "val_calibrated": val_cal_metrics.to_dict(),
+            "test_raw": test_raw_metrics.to_dict(),
+            "test_calibrated": test_cal_metrics.to_dict(),
         },
     }
 
@@ -379,14 +379,14 @@ def main():
 
     # Print summary
     logger.info("\n" + "=" * 60)
-    logger.info("SUMMARY (Validation Set)")
+    logger.info(f"SUMMARY - TEST SET (N={len(test_labels)})")
     logger.info("=" * 60)
     logger.info(f"{'Metric':<20} {'Raw':>12} {'Calibrated':>12} {'Improvement':>12}")
     logger.info("-" * 60)
 
     for metric in ['accuracy', 'error_rate', 'ece', 'cross_entropy']:
-        raw_val = val_raw_metrics.to_dict()[metric]
-        cal_val = val_cal_metrics.to_dict()[metric]
+        raw_val = test_raw_metrics.to_dict()[metric]
+        cal_val = test_cal_metrics.to_dict()[metric]
         if metric == 'accuracy':
             imp = cal_val - raw_val
             imp_str = f"+{imp:.4f}" if imp > 0 else f"{imp:.4f}"

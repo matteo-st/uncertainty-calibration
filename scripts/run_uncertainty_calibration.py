@@ -60,6 +60,8 @@ def parse_args():
                         help="Path to affine calibrator checkpoint (.pkl from finetune_affine.py)")
 
     # Data sizes
+    parser.add_argument("--n_finetune_skip", type=int, default=600,
+                        help="Number of samples to skip (used for finetuning in Step 1)")
     parser.add_argument("--n_calibration", type=int, default=1000,
                         help="Number of samples for calibration (ALL used for fitting)")
     parser.add_argument("--n_test", type=int, default=1000,
@@ -93,10 +95,13 @@ def parse_args():
 
 
 def get_cache_path(cache_dir: Path, dataset: str, model: str, split: str,
-                   n_samples: int, n_shots: int, seed: int) -> Path:
+                   n_samples: int, n_shots: int, seed: int, skip: int = 0) -> Path:
     """Generate cache file path for probabilities."""
     model_clean = model.replace("/", "_")
-    filename = f"{dataset}_{model_clean}_{split}_n{n_samples}_shots{n_shots}_seed{seed}.npz"
+    if skip > 0:
+        filename = f"{dataset}_{model_clean}_{split}_n{n_samples}_skip{skip}_shots{n_shots}_seed{seed}.npz"
+    else:
+        filename = f"{dataset}_{model_clean}_{split}_n{n_samples}_shots{n_shots}_seed{seed}.npz"
     return cache_dir / filename
 
 
@@ -250,7 +255,7 @@ def main():
     # Check cache for probabilities
     cal_cache_path = get_cache_path(
         cache_dir, args.dataset, args.model, "calibration",
-        args.n_calibration, args.n_shots, args.seed
+        args.n_calibration, args.n_shots, args.seed, skip=args.n_finetune_skip
     )
     test_cache_path = get_cache_path(
         cache_dir, args.dataset, args.model, "test",
@@ -290,7 +295,7 @@ def main():
     rng = np.random.RandomState(args.seed)
     all_indices = rng.permutation(len(dataset.train_texts))
 
-    # Extract shots
+    # Extract shots (if any)
     if args.n_shots > 0:
         shot_indices = all_indices[:args.n_shots].tolist()
         remaining_indices = all_indices[args.n_shots:]
@@ -298,13 +303,17 @@ def main():
         shot_indices = []
         remaining_indices = all_indices
 
-    # All remaining for calibration (no split - use ALL for fitting)
-    cal_indices = remaining_indices[:args.n_calibration].tolist()
+    # Skip samples used for finetuning (to ensure disjoint sets)
+    # Finetune set: indices [0 : n_finetune_skip]
+    # Calibration set: indices [n_finetune_skip : n_finetune_skip + n_calibration]
+    skip_start = args.n_finetune_skip
+    cal_indices = remaining_indices[skip_start : skip_start + args.n_calibration].tolist()
 
-    logger.info(f"\nData split:")
+    logger.info(f"\nData split (disjoint sets):")
     logger.info(f"  Shots: {len(shot_indices)}")
-    logger.info(f"  Calibration (ALL for fitting): {len(cal_indices)}")
-    logger.info(f"  Test (for evaluation): {len(dataset.test_texts)}")
+    logger.info(f"  Skipped (used for finetuning): {args.n_finetune_skip}")
+    logger.info(f"  Calibration set: {len(cal_indices)} (indices {skip_start} to {skip_start + len(cal_indices) - 1})")
+    logger.info(f"  Test set: {len(dataset.test_texts)} (from test split)")
 
     # Build preface with shots
     preface = dataset.get_few_shot_preface(
@@ -334,12 +343,17 @@ def main():
                 "model": args.model,
                 "split": "calibration",
                 "n_samples": args.n_calibration,
+                "n_finetune_skip": args.n_finetune_skip,
+                "start_index": args.n_finetune_skip,
+                "end_index": args.n_finetune_skip + args.n_calibration - 1,
                 "n_shots": args.n_shots,
                 "seed": args.seed,
                 "label_names": dataset.label_names,
                 "preface": preface,
                 "description": "Raw LLM probabilities BEFORE affine calibration. "
-                              "Affine calibration should be applied post-hoc.",
+                              "Affine calibration should be applied post-hoc. "
+                              f"Indices {args.n_finetune_skip} to {args.n_finetune_skip + args.n_calibration - 1} "
+                              "(disjoint from finetune set).",
             }
             save_probabilities_cache(
                 cal_cache_path, cal_probs_raw, cal_labels,
