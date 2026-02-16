@@ -262,7 +262,7 @@ def compute_ece(
     n_bins: int = 10
 ) -> float:
     """
-    Compute Expected Calibration Error (ECE).
+    Compute Expected Calibration Error (ECE) using equal-width bins.
 
     ECE measures the difference between predicted probabilities and
     actual error rates within bins.
@@ -299,6 +299,67 @@ def compute_ece(
             actual_rate = errors[in_bin].mean()
             # Weighted absolute difference
             ece += (bin_count / n_samples) * abs(avg_prob - actual_rate)
+
+    return ece
+
+
+def compute_ece_uniform_mass(
+    scores: np.ndarray,
+    errors: np.ndarray,
+    n_bins: int = None
+) -> float:
+    """
+    Compute Expected Calibration Error (ECE) using uniform mass (equal-frequency) bins.
+
+    This is appropriate for continuous uncertainty scores that need to be discretized.
+    Uses quantile-based binning so each bin has approximately the same number of samples.
+
+    Args:
+        scores: (N,) array of uncertainty scores (continuous, will be discretized)
+        errors: (N,) array of binary error indicators (1=error, 0=correct)
+        n_bins: Number of bins. If None, uses Scott's rule: B = floor(2 * N^(1/3))
+
+    Returns:
+        ECE value (lower is better, 0 = perfectly calibrated)
+    """
+    n_samples = len(errors)
+
+    # Scott's rule for number of bins
+    if n_bins is None:
+        n_bins = int(2 * (n_samples ** (1/3)))
+
+    # Compute quantile boundaries for uniform mass bins
+    quantiles = np.linspace(0, 100, n_bins + 1)
+    bin_boundaries = np.percentile(scores, quantiles)
+
+    # Make boundaries unique (handle ties)
+    bin_boundaries = np.unique(bin_boundaries)
+    actual_n_bins = len(bin_boundaries) - 1
+
+    if actual_n_bins == 0:
+        # All scores are identical
+        return abs(scores[0] - errors.mean())
+
+    ece = 0.0
+    for i in range(actual_n_bins):
+        bin_lower = bin_boundaries[i]
+        bin_upper = bin_boundaries[i + 1]
+
+        if i == actual_n_bins - 1:
+            # Include right edge for last bin
+            in_bin = (scores >= bin_lower) & (scores <= bin_upper)
+        else:
+            in_bin = (scores >= bin_lower) & (scores < bin_upper)
+
+        bin_count = in_bin.sum()
+
+        if bin_count > 0:
+            # Average score in bin (treated as predicted probability)
+            avg_score = scores[in_bin].mean()
+            # Actual error rate in bin
+            actual_rate = errors[in_bin].mean()
+            # Weighted absolute difference
+            ece += (bin_count / n_samples) * abs(avg_score - actual_rate)
 
     return ece
 
@@ -363,11 +424,16 @@ def compare_calibration(
     """
     Compare metrics before and after calibration.
 
+    For ECE computation:
+    - Before: Use uniform mass (equal-frequency) binning with Scott's rule
+      to discretize continuous uncertainty scores
+    - After: Use equal-width binning on calibrated probabilities
+
     Args:
         scores: (N,) array of raw uncertainty scores
         errors: (N,) array of binary error indicators
         calibrated_probs: (N,) array of calibrated error probabilities
-        n_bins: Number of bins for ECE
+        n_bins: Number of bins for ECE (after calibration)
 
     Returns:
         Dict with 'before' and 'after' metrics
@@ -376,15 +442,19 @@ def compare_calibration(
     # (clip to [0, 1] for valid probabilities)
     raw_probs = np.clip(scores, 0.0, 1.0)
 
+    # For ECE before calibration: use uniform mass binning with Scott's rule
+    # This properly handles continuous uncertainty scores
+    n_bins_scott = int(2 * (len(scores) ** (1/3)))
+
     before_metrics = ErrorPredictionMetrics(
         rocauc=compute_rocauc(scores, errors),
-        ece=compute_ece(raw_probs, errors, n_bins),
+        ece=compute_ece_uniform_mass(raw_probs, errors, n_bins=n_bins_scott),
         binary_cross_entropy=compute_binary_cross_entropy(raw_probs, errors),
     )
 
     after_metrics = ErrorPredictionMetrics(
-        rocauc=compute_rocauc(scores, errors),  # ROCAUC unchanged by calibration
-        ece=compute_ece(calibrated_probs, errors, n_bins),
+        rocauc=compute_rocauc(calibrated_probs, errors),  # Should be same as before (monotonic)
+        ece=compute_ece_uniform_mass(calibrated_probs, errors, n_bins=n_bins_scott),
         binary_cross_entropy=compute_binary_cross_entropy(calibrated_probs, errors),
     )
 

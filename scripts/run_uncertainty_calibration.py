@@ -453,7 +453,7 @@ def main():
             # Print summary
             before = results["before"]
             after = results["after"]
-            logger.info(f"    ROCAUC: {before['rocauc']:.4f}")
+            logger.info(f"    ROCAUC: {before['rocauc']:.4f} -> {after['rocauc']:.4f}")
             logger.info(f"    ECE:    {before['ece']:.4f} -> {after['ece']:.4f}")
             logger.info(f"    BCE:    {before['binary_cross_entropy']:.4f} -> {after['binary_cross_entropy']:.4f}")
 
@@ -499,14 +499,29 @@ def main():
         logger.info(row)
 
     logger.info("\n" + "=" * 70)
-    logger.info("SUMMARY: ROCAUC (unchanged by calibration)")
+    logger.info("SUMMARY: ROCAUC (before -> after, should be unchanged)")
+    logger.info("=" * 70)
+
+    logger.info(header)
+    logger.info("-" * 70)
+
+    for score_name in args.scores:
+        row = f"{score_name:<25}"
+        for cal in args.calibrators:
+            res = all_results["results"][score_name][cal]
+            before_rocauc = res["before"]["rocauc"]
+            after_rocauc = res["after"]["rocauc"]
+            row += f" {before_rocauc:.3f}->{after_rocauc:.3f} "
+        logger.info(row)
+
+    logger.info("\n" + "=" * 70)
+    logger.info("SUMMARY: Classification Error Rate (base rate for error detection)")
     logger.info("=" * 70)
 
     for score_name in args.scores:
         res = all_results["results"][score_name][args.calibrators[0]]
-        rocauc = res["before"]["rocauc"]
         error_rate = res["error_rate_test"]
-        logger.info(f"{score_name:<25}: ROCAUC={rocauc:.4f}, Error Rate={error_rate:.4f}")
+        logger.info(f"{score_name:<25}: Classification Error Rate = {error_rate:.4f}")
 
 
 if __name__ == "__main__":
