@@ -3,13 +3,15 @@
 Step 1: Finetune LLM posteriors with Affine Calibration.
 
 This script:
-1. Loads the base LLM (GPT-2 XL)
-2. Extracts raw probabilities on training data
+1. Loads the base LLM (GPT-2 XL) OR loads cached probabilities
+2. Extracts raw probabilities on training data (cached for reuse)
 3. Fits AffineCalibrator (learns α and β parameters)
 4. Saves calibration parameters to a checkpoint file
 
 The checkpoint can then be loaded by run_uncertainty_calibration.py
 to get calibrated probabilities for uncertainty score experiments.
+
+Caching: Probabilities are cached to avoid re-running LLM inference.
 """
 
 import argparse
@@ -57,11 +59,40 @@ def parse_args():
     parser.add_argument("--patience", type=int, default=10,
                         help="Early stopping patience (stop if loss doesn't decrease)")
 
-    # Output
+    # Output and caching
     parser.add_argument("--output_dir", type=str, default="checkpoints")
+    parser.add_argument("--cache_dir", type=str, default="cache/probabilities",
+                        help="Directory to cache extracted probabilities")
+    parser.add_argument("--no_cache", action="store_true",
+                        help="Disable probability caching (always run inference)")
     parser.add_argument("--seed", type=int, default=42)
 
     return parser.parse_args()
+
+
+def get_cache_path(cache_dir: Path, dataset: str, model: str, split: str,
+                   n_samples: int, n_shots: int, seed: int) -> Path:
+    """Generate cache file path for probabilities."""
+    model_clean = model.replace("/", "_")
+    filename = f"{dataset}_{model_clean}_{split}_n{n_samples}_shots{n_shots}_seed{seed}.npz"
+    return cache_dir / filename
+
+
+def load_cached_probabilities(cache_path: Path, logger):
+    """Load cached probabilities if available."""
+    if cache_path.exists():
+        logger.info(f"Loading cached probabilities from {cache_path}")
+        data = np.load(cache_path)
+        return data["probs"], data["labels"], data["indices"]
+    return None, None, None
+
+
+def save_probabilities_cache(cache_path: Path, probs: np.ndarray,
+                             labels: np.ndarray, indices: np.ndarray, logger):
+    """Save probabilities to cache."""
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(cache_path, probs=probs, labels=labels, indices=indices)
+    logger.info(f"Probabilities cached to {cache_path}")
 
 
 def main():
@@ -71,6 +102,7 @@ def main():
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir = Path(args.cache_dir)
 
     logger.info("=" * 60)
     logger.info("Step 1: Finetune LLM with Affine Calibration")
@@ -82,10 +114,35 @@ def main():
     logger.info(f"Shots: {args.n_shots}")
     logger.info(f"Learn alpha: {args.learn_alpha}")
     logger.info(f"Seed: {args.seed}")
+    logger.info(f"Cache dir: {cache_dir} (disabled: {args.no_cache})")
 
-    # Load model
-    logger.info("\nLoading model...")
-    classifier = LLMClassifier(model_name=args.model)
+    # Check cache for training probabilities
+    train_cache_path = get_cache_path(
+        cache_dir, args.dataset, args.model, "finetune_train",
+        args.n_train, args.n_shots, args.seed
+    )
+    val_cache_path = get_cache_path(
+        cache_dir, args.dataset, args.model, "finetune_val",
+        args.n_val, args.n_shots, args.seed
+    )
+
+    # Try to load cached probabilities
+    train_probs_raw, train_labels, train_indices = None, None, None
+    val_probs_raw, val_labels, val_indices = None, None, None
+
+    if not args.no_cache:
+        train_probs_raw, train_labels, train_indices = load_cached_probabilities(train_cache_path, logger)
+        val_probs_raw, val_labels, val_indices = load_cached_probabilities(val_cache_path, logger)
+
+    # Determine if we need to load the model
+    need_model = train_probs_raw is None or val_probs_raw is None
+
+    classifier = None
+    if need_model:
+        logger.info("\nLoading model...")
+        classifier = LLMClassifier(model_name=args.model)
+    else:
+        logger.info("\nUsing cached probabilities - skipping model loading")
 
     # Load dataset
     total_needed = args.n_train + args.n_val + args.n_shots + 100
@@ -120,18 +177,28 @@ def main():
         seed=args.seed
     )
 
-    # Get raw probabilities on training data
-    logger.info("\nExtracting raw probabilities on training data...")
-    train_prompts = [
-        dataset.build_prompt(preface, dataset.train_texts[i])
-        for i in train_indices
-    ]
-    train_probs_raw = classifier.get_batch_label_probabilities(
-        train_prompts,
-        dataset.label_names,
-        show_progress=True,
-    )
-    train_labels = np.array([dataset.train_labels[i] for i in train_indices])
+    # Get raw probabilities on training data (from cache or inference)
+    if train_probs_raw is None:
+        logger.info("\nExtracting raw probabilities on training data...")
+        train_prompts = [
+            dataset.build_prompt(preface, dataset.train_texts[i])
+            for i in train_indices
+        ]
+        train_probs_raw = classifier.get_batch_label_probabilities(
+            train_prompts,
+            dataset.label_names,
+            show_progress=True,
+        )
+        train_labels = np.array([dataset.train_labels[i] for i in train_indices])
+
+        # Cache the probabilities
+        if not args.no_cache:
+            save_probabilities_cache(
+                train_cache_path, train_probs_raw, train_labels,
+                np.array(train_indices), logger
+            )
+    else:
+        logger.info("\nUsing cached training probabilities")
 
     # Evaluate raw probabilities
     logger.info("\nRaw model performance on training data:")
@@ -173,15 +240,25 @@ def main():
     logger.info(f"  ECE: {cal_metrics.ece:.4f}")
     logger.info(f"  Cross-Entropy: {cal_metrics.cross_entropy:.4f}")
 
-    # Validate on held-out data
-    logger.info("\nExtracting probabilities on validation data...")
-    val_prompts = dataset.build_prompts_for_split(preface, split="test")
-    val_probs_raw = classifier.get_batch_label_probabilities(
-        val_prompts,
-        dataset.label_names,
-        show_progress=True,
-    )
-    val_labels = np.array(dataset.test_labels)
+    # Validate on held-out data (from cache or inference)
+    if val_probs_raw is None:
+        logger.info("\nExtracting probabilities on validation data...")
+        val_prompts = dataset.build_prompts_for_split(preface, split="test")
+        val_probs_raw = classifier.get_batch_label_probabilities(
+            val_prompts,
+            dataset.label_names,
+            show_progress=True,
+        )
+        val_labels = np.array(dataset.test_labels)
+
+        # Cache the probabilities
+        if not args.no_cache:
+            save_probabilities_cache(
+                val_cache_path, val_probs_raw, val_labels,
+                np.arange(len(val_labels)), logger
+            )
+    else:
+        logger.info("\nUsing cached validation probabilities")
 
     # Raw performance on validation
     val_raw_metrics = compute_metrics(val_probs_raw, val_labels)

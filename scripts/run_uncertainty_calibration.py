@@ -4,14 +4,17 @@ Run uncertainty score calibration experiments for error prediction.
 
 This script (Steps 2-4 of the experimental pipeline):
 1. Loads the LLM and optionally an affine calibrator checkpoint
-2. Extracts class probabilities on calibration samples
+   OR loads cached raw probabilities (skipping LLM inference)
+2. Extracts class probabilities on calibration samples (cached for reuse)
 3. Applies affine calibration if checkpoint provided
 4. Computes uncertainty scores (1-max_proba, margin, doctor)
-5. Splits data for score calibrator training/testing
-6. Fits score calibrators (PHC-DP, PHC-TS, PHC-BO, Uniform Mass)
-7. Evaluates calibration quality (ROCAUC, ECE, Cross-Entropy)
+5. Fits score calibrators on ALL calibration data (PHC-DP, PHC-TS, PHC-BO, Uniform Mass)
+6. Evaluates calibration quality (ROCAUC, ECE, Cross-Entropy)
 
 Prerequisite: Run finetune_affine.py first to get calibrator checkpoint.
+
+Caching: Raw probabilities are cached to avoid re-running LLM inference.
+         Affine calibration is applied post-hoc on cached probabilities.
 """
 
 import argparse
@@ -78,11 +81,40 @@ def parse_args():
     parser.add_argument("--n_bins_ece", type=int, default=10,
                         help="Number of bins for ECE computation (Uniform Mass uses Scott's rule)")
 
-    # Output
+    # Output and caching
     parser.add_argument("--output_dir", type=str, default="results/uncertainty_calibration")
+    parser.add_argument("--cache_dir", type=str, default="cache/probabilities",
+                        help="Directory to cache extracted probabilities")
+    parser.add_argument("--no_cache", action="store_true",
+                        help="Disable probability caching (always run inference)")
     parser.add_argument("--seed", type=int, default=42)
 
     return parser.parse_args()
+
+
+def get_cache_path(cache_dir: Path, dataset: str, model: str, split: str,
+                   n_samples: int, n_shots: int, seed: int) -> Path:
+    """Generate cache file path for probabilities."""
+    model_clean = model.replace("/", "_")
+    filename = f"{dataset}_{model_clean}_{split}_n{n_samples}_shots{n_shots}_seed{seed}.npz"
+    return cache_dir / filename
+
+
+def load_cached_probabilities(cache_path: Path, logger):
+    """Load cached probabilities if available."""
+    if cache_path.exists():
+        logger.info(f"Loading cached probabilities from {cache_path}")
+        data = np.load(cache_path)
+        return data["probs"], data["labels"], data["indices"]
+    return None, None, None
+
+
+def save_probabilities_cache(cache_path: Path, probs: np.ndarray,
+                             labels: np.ndarray, indices: np.ndarray, logger):
+    """Save probabilities to cache."""
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(cache_path, probs=probs, labels=labels, indices=indices)
+    logger.info(f"Probabilities cached to {cache_path}")
 
 
 def run_calibration_experiment(
@@ -153,6 +185,7 @@ def main():
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir = Path(args.cache_dir)
 
     logger.info("=" * 60)
     logger.info("Uncertainty Score Calibration Experiment")
@@ -165,6 +198,7 @@ def main():
     logger.info(f"Shots: {args.n_shots}")
     logger.info(f"Scores: {args.scores}")
     logger.info(f"Calibrators: {args.calibrators}")
+    logger.info(f"Cache dir: {cache_dir} (disabled: {args.no_cache})")
 
     # Load affine calibrator if provided
     affine_calibrator = None
@@ -176,11 +210,33 @@ def main():
         logger.info(f"  Alpha: {affine_calibrator.alpha:.4f}")
         logger.info(f"  Beta: {affine_calibrator.beta}")
 
-    # Load model (base model, no checkpoint - affine calibration is applied post-hoc)
-    logger.info("\nLoading model...")
-    classifier = LLMClassifier(
-        model_name=args.model,
+    # Check cache for probabilities
+    cal_cache_path = get_cache_path(
+        cache_dir, args.dataset, args.model, "calibration",
+        args.n_calibration, args.n_shots, args.seed
     )
+    test_cache_path = get_cache_path(
+        cache_dir, args.dataset, args.model, "test",
+        args.n_test, args.n_shots, args.seed
+    )
+
+    # Try to load cached probabilities
+    cal_probs_raw, cal_labels, cal_indices = None, None, None
+    test_probs_raw, test_labels, test_indices = None, None, None
+
+    if not args.no_cache:
+        cal_probs_raw, cal_labels, cal_indices = load_cached_probabilities(cal_cache_path, logger)
+        test_probs_raw, test_labels, test_indices = load_cached_probabilities(test_cache_path, logger)
+
+    # Determine if we need to load the model
+    need_model = cal_probs_raw is None or test_probs_raw is None
+
+    classifier = None
+    if need_model:
+        logger.info("\nLoading model...")
+        classifier = LLMClassifier(model_name=args.model)
+    else:
+        logger.info("\nUsing cached probabilities - skipping model loading")
 
     # Load dataset
     # Need enough samples for calibration + test
@@ -220,18 +276,28 @@ def main():
         seed=args.seed
     )
 
-    # Get probabilities for calibration set (ALL used for fitting)
-    logger.info("\nExtracting probabilities for calibration set...")
-    cal_prompts = [
-        dataset.build_prompt(preface, dataset.train_texts[i])
-        for i in cal_indices
-    ]
-    cal_probs_raw = classifier.get_batch_label_probabilities(
-        cal_prompts,
-        dataset.label_names,
-        show_progress=True,
-    )
-    cal_labels = np.array([dataset.train_labels[i] for i in cal_indices])
+    # Get probabilities for calibration set (from cache or inference)
+    if cal_probs_raw is None:
+        logger.info("\nExtracting probabilities for calibration set...")
+        cal_prompts = [
+            dataset.build_prompt(preface, dataset.train_texts[i])
+            for i in cal_indices
+        ]
+        cal_probs_raw = classifier.get_batch_label_probabilities(
+            cal_prompts,
+            dataset.label_names,
+            show_progress=True,
+        )
+        cal_labels = np.array([dataset.train_labels[i] for i in cal_indices])
+
+        # Cache the probabilities
+        if not args.no_cache:
+            save_probabilities_cache(
+                cal_cache_path, cal_probs_raw, cal_labels,
+                np.array(cal_indices), logger
+            )
+    else:
+        logger.info("\nUsing cached calibration probabilities")
 
     # Apply affine calibration if available
     if affine_calibrator is not None:
@@ -240,15 +306,25 @@ def main():
     else:
         cal_probs = cal_probs_raw
 
-    # Get probabilities for test set (for evaluation)
-    logger.info("\nExtracting probabilities for test set...")
-    test_prompts = dataset.build_prompts_for_split(preface, split="test")
-    test_probs_raw = classifier.get_batch_label_probabilities(
-        test_prompts,
-        dataset.label_names,
-        show_progress=True,
-    )
-    test_labels = np.array(dataset.test_labels)
+    # Get probabilities for test set (from cache or inference)
+    if test_probs_raw is None:
+        logger.info("\nExtracting probabilities for test set...")
+        test_prompts = dataset.build_prompts_for_split(preface, split="test")
+        test_probs_raw = classifier.get_batch_label_probabilities(
+            test_prompts,
+            dataset.label_names,
+            show_progress=True,
+        )
+        test_labels = np.array(dataset.test_labels)
+
+        # Cache the probabilities
+        if not args.no_cache:
+            save_probabilities_cache(
+                test_cache_path, test_probs_raw, test_labels,
+                np.arange(len(test_labels)), logger
+            )
+    else:
+        logger.info("\nUsing cached test probabilities")
 
     # Apply affine calibration if available
     if affine_calibrator is not None:
