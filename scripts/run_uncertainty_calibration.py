@@ -101,20 +101,57 @@ def get_cache_path(cache_dir: Path, dataset: str, model: str, split: str,
 
 
 def load_cached_probabilities(cache_path: Path, logger):
-    """Load cached probabilities if available."""
+    """
+    Load cached probabilities if available.
+
+    Returns:
+        probs: Raw (uncalibrated) LLM probabilities
+        labels: True class labels
+        indices: Original dataset indices
+        metadata: Dict with generation info (or None if old cache format)
+    """
     if cache_path.exists():
         logger.info(f"Loading cached probabilities from {cache_path}")
-        data = np.load(cache_path)
-        return data["probs"], data["labels"], data["indices"]
-    return None, None, None
+        data = np.load(cache_path, allow_pickle=True)
+        probs = data["probs"]
+        labels = data["labels"]
+        indices = data["indices"]
+
+        # Load metadata if available (for reproducibility verification)
+        metadata = None
+        if "metadata" in data:
+            metadata = data["metadata"].item()  # .item() to get dict from 0-d array
+            logger.info(f"  Cache metadata: dataset={metadata.get('dataset')}, "
+                       f"model={metadata.get('model')}, n_samples={metadata.get('n_samples')}, "
+                       f"seed={metadata.get('seed')}")
+
+        return probs, labels, indices, metadata
+    return None, None, None, None
 
 
 def save_probabilities_cache(cache_path: Path, probs: np.ndarray,
-                             labels: np.ndarray, indices: np.ndarray, logger):
-    """Save probabilities to cache."""
+                             labels: np.ndarray, indices: np.ndarray,
+                             metadata: dict, logger):
+    """
+    Save probabilities to cache with full metadata for reproducibility.
+
+    Args:
+        cache_path: Path to save the cache
+        probs: Raw (uncalibrated) LLM probabilities, shape (N, K)
+        labels: True class labels, shape (N,)
+        indices: Original dataset indices used, shape (N,)
+        metadata: Dict containing generation info for reproducibility
+    """
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(cache_path, probs=probs, labels=labels, indices=indices)
+    np.savez(
+        cache_path,
+        probs=probs,
+        labels=labels,
+        indices=indices,
+        metadata=metadata,  # Saved as 0-d object array
+    )
     logger.info(f"Probabilities cached to {cache_path}")
+    logger.info(f"  Metadata: {metadata}")
 
 
 def run_calibration_experiment(
@@ -221,12 +258,12 @@ def main():
     )
 
     # Try to load cached probabilities
-    cal_probs_raw, cal_labels, cal_indices = None, None, None
-    test_probs_raw, test_labels, test_indices = None, None, None
+    cal_probs_raw, cal_labels, cal_indices, cal_meta = None, None, None, None
+    test_probs_raw, test_labels, test_meta = None, None, None
 
     if not args.no_cache:
-        cal_probs_raw, cal_labels, cal_indices = load_cached_probabilities(cal_cache_path, logger)
-        test_probs_raw, test_labels, test_indices = load_cached_probabilities(test_cache_path, logger)
+        cal_probs_raw, cal_labels, cal_indices, cal_meta = load_cached_probabilities(cal_cache_path, logger)
+        test_probs_raw, test_labels, _, test_meta = load_cached_probabilities(test_cache_path, logger)
 
     # Determine if we need to load the model
     need_model = cal_probs_raw is None or test_probs_raw is None
@@ -290,11 +327,23 @@ def main():
         )
         cal_labels = np.array([dataset.train_labels[i] for i in cal_indices])
 
-        # Cache the probabilities
+        # Cache the probabilities with full metadata
         if not args.no_cache:
+            cal_metadata = {
+                "dataset": args.dataset,
+                "model": args.model,
+                "split": "calibration",
+                "n_samples": args.n_calibration,
+                "n_shots": args.n_shots,
+                "seed": args.seed,
+                "label_names": dataset.label_names,
+                "preface": preface,
+                "description": "Raw LLM probabilities BEFORE affine calibration. "
+                              "Affine calibration should be applied post-hoc.",
+            }
             save_probabilities_cache(
                 cal_cache_path, cal_probs_raw, cal_labels,
-                np.array(cal_indices), logger
+                np.array(cal_indices), cal_metadata, logger
             )
     else:
         logger.info("\nUsing cached calibration probabilities")
@@ -317,11 +366,23 @@ def main():
         )
         test_labels = np.array(dataset.test_labels)
 
-        # Cache the probabilities
+        # Cache the probabilities with full metadata
         if not args.no_cache:
+            test_metadata = {
+                "dataset": args.dataset,
+                "model": args.model,
+                "split": "test",
+                "n_samples": args.n_test,
+                "n_shots": args.n_shots,
+                "seed": args.seed,
+                "label_names": dataset.label_names,
+                "preface": preface,
+                "description": "Raw LLM probabilities BEFORE affine calibration. "
+                              "Affine calibration should be applied post-hoc.",
+            }
             save_probabilities_cache(
                 test_cache_path, test_probs_raw, test_labels,
-                np.arange(len(test_labels)), logger
+                np.arange(len(test_labels)), test_metadata, logger
             )
     else:
         logger.info("\nUsing cached test probabilities")
