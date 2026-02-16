@@ -26,6 +26,7 @@ class LLMClassifier:
         model_name: str = "gpt2-xl",
         device: Optional[str] = None,
         max_memory: Optional[Dict] = None,
+        checkpoint_path: Optional[str] = None,
     ):
         """
         Initialize the classifier.
@@ -34,9 +35,11 @@ class LLMClassifier:
             model_name: Hugging Face model identifier (default: gpt2-xl)
             device: Device to use ('cuda', 'cpu', or None for auto)
             max_memory: Memory allocation for model parallelism
+            checkpoint_path: Path to finetuned checkpoint (optional)
         """
         self.model_name = model_name
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.checkpoint_path = checkpoint_path
 
         print(f"Loading model {model_name}...")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -57,6 +60,17 @@ class LLMClassifier:
             model_name,
             **load_kwargs
         )
+
+        # Load checkpoint if provided
+        if checkpoint_path:
+            print(f"Loading checkpoint from {checkpoint_path}...")
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+                self.model.load_state_dict(checkpoint["model_state_dict"])
+            else:
+                self.model.load_state_dict(checkpoint)
+            print("Checkpoint loaded successfully")
+
         self.model.eval()
         print(f"Model loaded on {self.device}")
 
