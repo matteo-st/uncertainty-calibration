@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import numpy as np
 import json
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from src.models import LLMClassifier
 from src.data import load_dataset_by_name
@@ -40,23 +41,32 @@ def parse_args():
     parser.add_argument("--n_seeds", type=int, default=10)
     parser.add_argument("--output_dir", type=str, default="results/figure3")
     parser.add_argument("--base_seed", type=int, default=42)
+    parser.add_argument("--plot_only", action="store_true",
+                        help="Only generate plots from existing results")
     return parser.parse_args()
 
 
 def run_for_n_shots(classifier, dataset, n_shots, n_train, seed, logger):
     """Run inference and calibration for a specific n_shots configuration."""
 
-    # Determine which samples to use for shots vs calibration
+    # Use seed to randomly sample shots and training indices
+    rng = np.random.RandomState(seed)
+
+    # Total available training samples
+    n_available = len(dataset.train_texts)
+
+    # Randomly sample indices for shots and calibration
+    all_indices = rng.permutation(n_available)
+
     if n_shots > 0:
-        shot_indices = list(range(n_shots))
-        # Use samples after the shots for calibration
-        train_indices = list(range(n_shots, min(n_shots + n_train, len(dataset.train_texts))))
+        shot_indices = all_indices[:n_shots].tolist()
+        train_indices = all_indices[n_shots:n_shots + n_train].tolist()
     else:
         shot_indices = []
-        train_indices = list(range(min(n_train, len(dataset.train_texts))))
+        train_indices = all_indices[:n_train].tolist()
 
-    # Build preface with shots
-    preface = dataset.get_few_shot_preface(n_shots, shot_indices=shot_indices, seed=seed)
+    # Build preface with shots (use the randomly sampled indices)
+    preface = dataset.get_few_shot_preface(n_shots, shot_indices=shot_indices if n_shots > 0 else None, seed=seed)
 
     # Get train probabilities (for calibration)
     train_prompts = [
@@ -97,9 +107,105 @@ def run_for_n_shots(classifier, dataset, n_shots, n_train, seed, logger):
     return results
 
 
+def generate_plots(results_file: str, output_dir: str):
+    """Generate Figure 3-style plots from results."""
+
+    with open(results_file, 'r') as f:
+        all_results = json.load(f)
+
+    config = all_results['config']
+    results_by_shots = all_results['results_by_shots']
+
+    n_shots_list = config['n_shots_list']
+    methods = ['no_adaptation', 'ucpa', 'sucpa', 'calibration']
+    method_labels = {
+        'no_adaptation': 'No Adaptation',
+        'ucpa': 'UCPA',
+        'sucpa': 'SUCPA',
+        'calibration': 'Calibration'
+    }
+    method_colors = {
+        'no_adaptation': 'black',
+        'ucpa': 'red',
+        'sucpa': 'red',
+        'calibration': 'green'
+    }
+    method_linestyles = {
+        'no_adaptation': '-',
+        'ucpa': '-',
+        'sucpa': '--',
+        'calibration': '-'
+    }
+
+    # Create figure with 2 subplots (like Figure 3)
+    fig, axes = plt.subplots(2, 1, figsize=(8, 10))
+
+    # Plot Cross-Entropy
+    ax1 = axes[0]
+    for method in methods:
+        means = [results_by_shots[str(n)][method]['cross_entropy']['mean'] for n in n_shots_list]
+        stds = [results_by_shots[str(n)][method]['cross_entropy']['std'] for n in n_shots_list]
+
+        ax1.errorbar(n_shots_list, means, yerr=stds,
+                     label=method_labels[method],
+                     color=method_colors[method],
+                     linestyle=method_linestyles[method],
+                     marker='o', capsize=3)
+
+    ax1.set_xlabel('Number of shots')
+    ax1.set_ylabel('Cross-Entropy')
+    ax1.set_title(f'AGNews - Cross-Entropy vs Number of Shots')
+    ax1.legend()
+    ax1.set_xticks(n_shots_list)
+    ax1.grid(True, alpha=0.3)
+
+    # Plot Error Rate
+    ax2 = axes[1]
+    for method in methods:
+        means = [results_by_shots[str(n)][method]['error_rate']['mean'] for n in n_shots_list]
+        stds = [results_by_shots[str(n)][method]['error_rate']['std'] for n in n_shots_list]
+
+        ax2.errorbar(n_shots_list, means, yerr=stds,
+                     label=method_labels[method],
+                     color=method_colors[method],
+                     linestyle=method_linestyles[method],
+                     marker='o', capsize=3)
+
+    ax2.set_xlabel('Number of shots')
+    ax2.set_ylabel('Error Rate')
+    ax2.set_title(f'AGNews - Error Rate vs Number of Shots')
+    ax2.legend()
+    ax2.set_xticks(n_shots_list)
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    # Save plot
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    plot_file = output_path / f"{config['dataset']}_figure3_plot.png"
+    plt.savefig(plot_file, dpi=150, bbox_inches='tight')
+    plt.close()
+
+    print(f"Plot saved to {plot_file}")
+    return plot_file
+
+
 def main():
     args = parse_args()
     logger = setup_logging()
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    results_file = output_dir / f"{args.dataset}_figure3_results.json"
+
+    # If plot_only, just generate plots from existing results
+    if args.plot_only:
+        if not results_file.exists():
+            logger.error(f"Results file not found: {results_file}")
+            return
+        generate_plots(str(results_file), args.output_dir)
+        return
 
     logger.info("=" * 60)
     logger.info("Replicating Figure 3: AGNews - Error Rate & CE vs. Shots")
@@ -115,8 +221,9 @@ def main():
     logger.info("\nLoading model...")
     classifier = LLMClassifier(model_name=args.model)
 
-    # Load dataset with enough samples
-    max_train = args.n_train + max(args.n_shots_list)
+    # Load dataset with enough samples for all seeds
+    # Need extra samples to allow different random sampling per seed
+    max_train = args.n_train + max(args.n_shots_list) + 100  # Extra buffer
     dataset = load_dataset_by_name(
         args.dataset,
         n_train=max_train,
@@ -180,11 +287,12 @@ def main():
             logger.info(f"{method:<20} {er['mean']:>7.4f} ± {er['std']:.4f} {ce['mean']:>7.4f} ± {ce['std']:.4f}")
 
     # Save results
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"{args.dataset}_figure3_results.json"
-    save_results(all_results, output_file)
-    logger.info(f"\nResults saved to {output_file}")
+    save_results(all_results, results_file)
+    logger.info(f"\nResults saved to {results_file}")
+
+    # Generate plots
+    logger.info("\nGenerating plots...")
+    generate_plots(str(results_file), args.output_dir)
 
     # Print final summary table
     logger.info("\n" + "=" * 70)
