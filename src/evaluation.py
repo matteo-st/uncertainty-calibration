@@ -446,14 +446,18 @@ def compare_calibration(
     # This properly handles continuous uncertainty scores
     n_bins_scott = int(2 * (len(scores) ** (1/3)))
 
+    # ROCAUC is always computed on original scores (measures ranking quality)
+    # It should be unchanged by calibration since we're measuring the score's discriminative power
+    rocauc = compute_rocauc(scores, errors)
+
     before_metrics = ErrorPredictionMetrics(
-        rocauc=compute_rocauc(scores, errors),
+        rocauc=rocauc,
         ece=compute_ece_uniform_mass(raw_probs, errors, n_bins=n_bins_scott),
         binary_cross_entropy=compute_binary_cross_entropy(raw_probs, errors),
     )
 
     after_metrics = ErrorPredictionMetrics(
-        rocauc=compute_rocauc(calibrated_probs, errors),  # Should be same as before (monotonic)
+        rocauc=rocauc,  # Same as before - ROCAUC measures original score's ranking
         ece=compute_ece_uniform_mass(calibrated_probs, errors, n_bins=n_bins_scott),
         binary_cross_entropy=compute_binary_cross_entropy(calibrated_probs, errors),
     )
