@@ -115,6 +115,7 @@ def compute_classification_ece(
 ) -> float:
     """
     Compute Expected Calibration Error (ECE) for multiclass classification.
+    Uses equal-width binning.
 
     ECE measures the difference between confidence (max probability) and accuracy.
     Samples are binned by confidence, and ECE is the weighted average of
@@ -148,11 +149,80 @@ def compute_classification_ece(
     return ece
 
 
+def compute_classification_ece_uniform_mass(
+    probs: np.ndarray,
+    labels: np.ndarray,
+    n_bins: int = None,
+) -> float:
+    """
+    Compute Expected Calibration Error (ECE) for multiclass classification.
+    Uses uniform-mass (equal-frequency) binning with Scott's rule.
+
+    This is equivalent to computing error detection ECE on max_proba_complement,
+    ensuring consistency between classification and error detection metrics.
+
+    Args:
+        probs: Predicted probabilities, shape (n_samples, n_classes)
+        labels: True labels, shape (n_samples,)
+        n_bins: Number of bins. If None, uses Scott's rule: B = floor(2 * N^(1/3))
+
+    Returns:
+        ECE value (lower is better, 0 = perfectly calibrated)
+    """
+    # Convert to error detection format: score = 1 - confidence, error = 1 - correct
+    confidences = probs.max(axis=1)
+    predictions = probs.argmax(axis=1)
+    errors = (predictions != labels).astype(float)
+    scores = 1 - confidences  # max_proba_complement
+
+    n_samples = len(labels)
+
+    # Scott's rule for number of bins
+    if n_bins is None:
+        n_bins = int(2 * (n_samples ** (1/3)))
+
+    # Compute quantile boundaries for uniform mass bins
+    quantiles = np.linspace(0, 100, n_bins + 1)
+    bin_boundaries = np.percentile(scores, quantiles)
+
+    # Make boundaries unique (handle ties)
+    bin_boundaries = np.unique(bin_boundaries)
+    actual_n_bins = len(bin_boundaries) - 1
+
+    if actual_n_bins == 0:
+        # All scores are identical
+        return abs(scores[0] - errors.mean())
+
+    ece = 0.0
+    for i in range(actual_n_bins):
+        bin_lower = bin_boundaries[i]
+        bin_upper = bin_boundaries[i + 1]
+
+        if i == actual_n_bins - 1:
+            # Include right edge for last bin
+            in_bin = (scores >= bin_lower) & (scores <= bin_upper)
+        else:
+            in_bin = (scores >= bin_lower) & (scores < bin_upper)
+
+        bin_count = in_bin.sum()
+
+        if bin_count > 0:
+            # Average score in bin (= 1 - avg_confidence)
+            avg_score = scores[in_bin].mean()
+            # Actual error rate in bin (= 1 - accuracy)
+            actual_rate = errors[in_bin].mean()
+            # Weighted absolute difference
+            ece += (bin_count / n_samples) * abs(avg_score - actual_rate)
+
+    return ece
+
+
 def compute_metrics(
     probs: np.ndarray,
     labels: np.ndarray,
     prior: Optional[np.ndarray] = None,
-    n_bins: int = 10,
+    n_bins: int = None,
+    use_uniform_mass_ece: bool = True,
 ) -> EvaluationMetrics:
     """
     Compute all evaluation metrics.
@@ -161,17 +231,23 @@ def compute_metrics(
         probs: Predicted probabilities, shape (n_samples, n_classes)
         labels: True labels, shape (n_samples,)
         prior: Prior distribution for normalized CE (default: empirical)
-        n_bins: Number of bins for ECE
+        n_bins: Number of bins for ECE (if None, uses Scott's rule for uniform-mass)
+        use_uniform_mass_ece: If True, use uniform-mass binning for ECE (default)
 
     Returns:
         EvaluationMetrics object
     """
+    if use_uniform_mass_ece:
+        ece = compute_classification_ece_uniform_mass(probs, labels, n_bins)
+    else:
+        ece = compute_classification_ece(probs, labels, n_bins if n_bins else 10)
+
     return EvaluationMetrics(
         accuracy=compute_accuracy(probs, labels),
         error_rate=compute_error_rate(probs, labels),
         cross_entropy=compute_cross_entropy(probs, labels),
         normalized_cross_entropy=compute_normalized_cross_entropy(probs, labels, prior),
-        ece=compute_classification_ece(probs, labels, n_bins),
+        ece=ece,
     )
 
 
