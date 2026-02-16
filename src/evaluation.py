@@ -19,6 +19,7 @@ class EvaluationMetrics:
     error_rate: float
     cross_entropy: float
     normalized_cross_entropy: float
+    ece: float = 0.0  # Classification ECE
 
     def to_dict(self) -> Dict[str, float]:
         return {
@@ -26,6 +27,7 @@ class EvaluationMetrics:
             "error_rate": self.error_rate,
             "cross_entropy": self.cross_entropy,
             "normalized_cross_entropy": self.normalized_cross_entropy,
+            "ece": self.ece,
         }
 
 
@@ -106,10 +108,51 @@ def compute_normalized_cross_entropy(
     return ce / baseline_ce
 
 
+def compute_classification_ece(
+    probs: np.ndarray,
+    labels: np.ndarray,
+    n_bins: int = 10,
+) -> float:
+    """
+    Compute Expected Calibration Error (ECE) for multiclass classification.
+
+    ECE measures the difference between confidence (max probability) and accuracy.
+    Samples are binned by confidence, and ECE is the weighted average of
+    |accuracy - confidence| in each bin.
+
+    Args:
+        probs: Predicted probabilities, shape (n_samples, n_classes)
+        labels: True labels, shape (n_samples,)
+        n_bins: Number of bins
+
+    Returns:
+        ECE value (lower is better, 0 = perfectly calibrated)
+    """
+    confidences = probs.max(axis=1)
+    predictions = probs.argmax(axis=1)
+    accuracies = (predictions == labels).astype(float)
+
+    n_samples = len(labels)
+    bin_boundaries = np.linspace(0, 1, n_bins + 1)
+    ece = 0.0
+
+    for i in range(n_bins):
+        in_bin = (confidences > bin_boundaries[i]) & (confidences <= bin_boundaries[i + 1])
+        bin_count = in_bin.sum()
+
+        if bin_count > 0:
+            avg_confidence = confidences[in_bin].mean()
+            avg_accuracy = accuracies[in_bin].mean()
+            ece += (bin_count / n_samples) * abs(avg_accuracy - avg_confidence)
+
+    return ece
+
+
 def compute_metrics(
     probs: np.ndarray,
     labels: np.ndarray,
     prior: Optional[np.ndarray] = None,
+    n_bins: int = 10,
 ) -> EvaluationMetrics:
     """
     Compute all evaluation metrics.
@@ -118,6 +161,7 @@ def compute_metrics(
         probs: Predicted probabilities, shape (n_samples, n_classes)
         labels: True labels, shape (n_samples,)
         prior: Prior distribution for normalized CE (default: empirical)
+        n_bins: Number of bins for ECE
 
     Returns:
         EvaluationMetrics object
@@ -127,6 +171,7 @@ def compute_metrics(
         error_rate=compute_error_rate(probs, labels),
         cross_entropy=compute_cross_entropy(probs, labels),
         normalized_cross_entropy=compute_normalized_cross_entropy(probs, labels, prior),
+        ece=compute_classification_ece(probs, labels, n_bins),
     )
 
 

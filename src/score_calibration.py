@@ -92,7 +92,9 @@ class PlattScaling(ScoreCalibrator):
         self,
         learn_alpha: bool = True,
         learn_beta: bool = True,
-        regularization: float = 0.0
+        n_iterations: int = 1000,
+        lr: float = 0.1,
+        patience: int = 10,
     ):
         """
         Initialize Platt scaling calibrator.
@@ -100,73 +102,86 @@ class PlattScaling(ScoreCalibrator):
         Args:
             learn_alpha: If True, learn the scaling parameter alpha
             learn_beta: If True, learn the bias parameter beta
-            regularization: L2 regularization strength (default: 0)
+            n_iterations: Maximum number of optimization iterations
+            lr: Learning rate
+            patience: Early stopping patience (stop if loss doesn't improve for this many steps)
         """
         self.learn_alpha = learn_alpha
         self.learn_beta = learn_beta
-        self.regularization = regularization
+        self.n_iterations = n_iterations
+        self.lr = lr
+        self.patience = patience
 
         # Initialize parameters
         self.alpha = 1.0
         self.beta = 0.0
+        self.loss_history = []
+        self.n_iterations_run = 0
 
     def fit(self, scores: np.ndarray, errors: np.ndarray) -> None:
         """
-        Fit alpha and beta by minimizing binary cross-entropy.
+        Fit alpha and beta by minimizing binary cross-entropy with gradient descent.
+        Uses early stopping if loss doesn't decrease for `patience` steps.
 
         Args:
             scores: (N,) array of uncertainty scores
             errors: (N,) array of binary error indicators
         """
-        def neg_log_likelihood(params):
-            alpha, beta = params
+        # Initialize parameters
+        alpha = 1.0 if self.learn_alpha else 1.0
+        beta = 0.0 if self.learn_beta else 0.0
 
-            # Compute predicted probabilities
+        # Early stopping tracking
+        best_loss = float('inf')
+        best_alpha = alpha
+        best_beta = beta
+        steps_without_improvement = 0
+        self.loss_history = []
+
+        n_samples = len(scores)
+
+        for iteration in range(self.n_iterations):
+            # Forward pass
             logits = alpha * scores + beta
             probs = expit(logits)
 
-            # Binary cross-entropy
+            # Compute binary cross-entropy loss
             eps = 1e-10
-            probs = np.clip(probs, eps, 1 - eps)
-            nll = -np.mean(
-                errors * np.log(probs) + (1 - errors) * np.log(1 - probs)
+            probs_clipped = np.clip(probs, eps, 1 - eps)
+            loss = -np.mean(
+                errors * np.log(probs_clipped) + (1 - errors) * np.log(1 - probs_clipped)
             )
+            self.loss_history.append(loss)
 
-            # L2 regularization
-            if self.regularization > 0:
-                nll += self.regularization * (alpha ** 2 + beta ** 2)
+            # Early stopping check
+            if loss < best_loss:
+                best_loss = loss
+                best_alpha = alpha
+                best_beta = beta
+                steps_without_improvement = 0
+            else:
+                steps_without_improvement += 1
+                if steps_without_improvement >= self.patience:
+                    break
 
-            return nll
+            # Compute gradients
+            # d_loss/d_logits = probs - errors
+            grad_logits = (probs - errors) / n_samples
 
-        # Initial values
-        alpha_init = self.alpha if self.learn_alpha else 1.0
-        beta_init = self.beta if self.learn_beta else 0.0
+            # Update beta
+            if self.learn_beta:
+                grad_beta = grad_logits.sum()
+                beta -= self.lr * grad_beta
 
-        # Optimize
-        if self.learn_alpha and self.learn_beta:
-            # Learn both
-            result = minimize(
-                neg_log_likelihood,
-                x0=[alpha_init, beta_init],
-                method='L-BFGS-B'
-            )
-            self.alpha, self.beta = result.x
+            # Update alpha
+            if self.learn_alpha:
+                grad_alpha = (grad_logits * scores).sum()
+                alpha -= self.lr * grad_alpha
 
-        elif self.learn_alpha:
-            # PHC-TS: only alpha
-            def nll_alpha(alpha):
-                return neg_log_likelihood([alpha[0], 0.0])
-            result = minimize(nll_alpha, x0=[alpha_init], method='L-BFGS-B')
-            self.alpha = result.x[0]
-            self.beta = 0.0
-
-        elif self.learn_beta:
-            # PHC-BO: only beta
-            def nll_beta(beta):
-                return neg_log_likelihood([1.0, beta[0]])
-            result = minimize(nll_beta, x0=[beta_init], method='L-BFGS-B')
-            self.alpha = 1.0
-            self.beta = result.x[0]
+        # Use best parameters
+        self.alpha = best_alpha
+        self.beta = best_beta
+        self.n_iterations_run = iteration + 1
 
     def calibrate(self, scores: np.ndarray) -> np.ndarray:
         """
@@ -196,8 +211,11 @@ class TemperatureScaling(PlattScaling):
     Only learns the temperature parameter alpha.
     """
 
-    def __init__(self, regularization: float = 0.0):
-        super().__init__(learn_alpha=True, learn_beta=False, regularization=regularization)
+    def __init__(self, n_iterations: int = 1000, lr: float = 0.1, patience: int = 10):
+        super().__init__(
+            learn_alpha=True, learn_beta=False,
+            n_iterations=n_iterations, lr=lr, patience=patience
+        )
 
 
 class BiasOnlyCalibration(PlattScaling):
@@ -210,8 +228,11 @@ class BiasOnlyCalibration(PlattScaling):
     Only learns the bias parameter beta.
     """
 
-    def __init__(self, regularization: float = 0.0):
-        super().__init__(learn_alpha=False, learn_beta=True, regularization=regularization)
+    def __init__(self, n_iterations: int = 1000, lr: float = 0.1, patience: int = 10):
+        super().__init__(
+            learn_alpha=False, learn_beta=True,
+            n_iterations=n_iterations, lr=lr, patience=patience
+        )
 
 
 class UniformMassCalibration(ScoreCalibrator):
@@ -225,14 +246,17 @@ class UniformMassCalibration(ScoreCalibrator):
     empirical error rate of that bin.
     """
 
-    def __init__(self, n_bins: int = 10):
+    def __init__(self, n_bins: int = None, use_scott_rule: bool = True):
         """
         Initialize uniform mass calibrator.
 
         Args:
-            n_bins: Number of bins (default: 10)
+            n_bins: Number of bins (if None and use_scott_rule=True, computed from data)
+            use_scott_rule: If True and n_bins is None, use Scott's rule: B = 2 * N^(1/3)
         """
         self.n_bins = n_bins
+        self.use_scott_rule = use_scott_rule
+        self.n_bins_actual = None
         self.bin_edges = None
         self.bin_error_rates = None
 
@@ -244,8 +268,19 @@ class UniformMassCalibration(ScoreCalibrator):
             scores: (N,) array of uncertainty scores
             errors: (N,) array of binary error indicators
         """
+        n_samples = len(scores)
+
+        # Determine number of bins
+        if self.n_bins is not None:
+            self.n_bins_actual = self.n_bins
+        elif self.use_scott_rule:
+            # Scott's rule: B = 2 * N^(1/3)
+            self.n_bins_actual = int(2 * (n_samples ** (1/3)))
+        else:
+            self.n_bins_actual = 10  # default
+
         # Compute quantile-based bin edges
-        quantiles = np.linspace(0, 100, self.n_bins + 1)
+        quantiles = np.linspace(0, 100, self.n_bins_actual + 1)
         self.bin_edges = np.percentile(scores, quantiles)
 
         # Ensure unique bin edges (handle repeated values)
@@ -293,6 +328,7 @@ class UniformMassCalibration(ScoreCalibrator):
     def get_params(self) -> dict:
         """Return bin edges and error rates."""
         return {
+            "n_bins_actual": self.n_bins_actual,
             "bin_edges": self.bin_edges.tolist() if self.bin_edges is not None else None,
             "bin_error_rates": self.bin_error_rates.tolist() if self.bin_error_rates is not None else None,
         }

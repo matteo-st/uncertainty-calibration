@@ -2,13 +2,16 @@
 """
 Run uncertainty score calibration experiments for error prediction.
 
-This script:
-1. Loads a model (base or finetuned checkpoint)
+This script (Steps 2-4 of the experimental pipeline):
+1. Loads the LLM and optionally an affine calibrator checkpoint
 2. Extracts class probabilities on calibration samples
-3. Computes uncertainty scores (1-max_proba, margin, doctor)
-4. Splits data for calibrator training/testing
-5. Fits calibrators (PHC-DP, Uniform Mass, etc.)
-6. Evaluates calibration quality (ROCAUC, ECE, Cross-Entropy)
+3. Applies affine calibration if checkpoint provided
+4. Computes uncertainty scores (1-max_proba, margin, doctor)
+5. Splits data for score calibrator training/testing
+6. Fits score calibrators (PHC-DP, PHC-TS, PHC-BO, Uniform Mass)
+7. Evaluates calibration quality (ROCAUC, ECE, Cross-Entropy)
+
+Prerequisite: Run finetune_affine.py first to get calibrator checkpoint.
 """
 
 import argparse
@@ -19,10 +22,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
 import json
+import pickle
 from tqdm import tqdm
 
 from src.models import LLMClassifier
 from src.data import load_dataset_by_name
+from src.calibration import AffineCalibrator
 from src.uncertainty import (
     compute_uncertainty_scores,
     get_predictions_and_errors,
@@ -48,16 +53,14 @@ def parse_args():
     # Model and data
     parser.add_argument("--dataset", type=str, default="agnews")
     parser.add_argument("--model", type=str, default="gpt2-xl")
-    parser.add_argument("--checkpoint", type=str, default=None,
-                        help="Path to finetuned model checkpoint (optional)")
+    parser.add_argument("--calibrator_checkpoint", type=str, default=None,
+                        help="Path to affine calibrator checkpoint (.pkl from finetune_affine.py)")
 
     # Data sizes
     parser.add_argument("--n_calibration", type=int, default=1000,
-                        help="Number of samples for calibration")
+                        help="Number of samples for calibration (ALL used for fitting)")
     parser.add_argument("--n_test", type=int, default=1000,
                         help="Number of samples for final testing")
-    parser.add_argument("--calibration_split", type=float, default=0.7,
-                        help="Fraction of calibration data for training calibrator")
 
     # Few-shot settings
     parser.add_argument("--n_shots", type=int, default=0,
@@ -70,10 +73,10 @@ def parse_args():
 
     # Calibration methods
     parser.add_argument("--calibrators", type=str, nargs="+",
-                        default=["none", "phc_dp", "phc_ts", "uniform_mass"],
+                        default=["none", "phc_dp", "phc_ts", "phc_bo", "uniform_mass"],
                         help="Calibration methods to compare")
-    parser.add_argument("--n_bins", type=int, default=10,
-                        help="Number of bins for uniform mass and ECE")
+    parser.add_argument("--n_bins_ece", type=int, default=10,
+                        help="Number of bins for ECE computation (Uniform Mass uses Scott's rule)")
 
     # Output
     parser.add_argument("--output_dir", type=str, default="results/uncertainty_calibration")
@@ -83,52 +86,61 @@ def parse_args():
 
 
 def run_calibration_experiment(
-    probs_train: np.ndarray,
-    labels_train: np.ndarray,
+    probs_cal: np.ndarray,
+    labels_cal: np.ndarray,
     probs_test: np.ndarray,
     labels_test: np.ndarray,
     score_name: str,
     calibrator_name: str,
-    n_bins: int = 10,
+    n_bins_ece: int = 10,
     logger=None,
 ) -> dict:
     """
     Run calibration experiment for a single score and calibrator.
 
+    Fits calibrator on ALL calibration data and evaluates on test data.
+
     Returns dict with metrics before and after calibration.
     """
     # Compute uncertainty scores
-    scores_train_obj = compute_uncertainty_scores(probs_train)
+    scores_cal_obj = compute_uncertainty_scores(probs_cal)
     scores_test_obj = compute_uncertainty_scores(probs_test)
 
-    scores_train = scores_train_obj.to_dict()[score_name]
+    scores_cal = scores_cal_obj.to_dict()[score_name]
     scores_test = scores_test_obj.to_dict()[score_name]
 
     # Get error indicators
-    _, errors_train = get_predictions_and_errors(probs_train, labels_train)
+    _, errors_cal = get_predictions_and_errors(probs_cal, labels_cal)
     _, errors_test = get_predictions_and_errors(probs_test, labels_test)
 
-    # Fit calibrator
-    calibrator = get_calibrator(calibrator_name, n_bins=n_bins)
-    calibrator.fit(scores_train, errors_train)
+    # Fit calibrator on ALL calibration data
+    # Note: Uniform Mass uses Scott's rule for bins (n_bins=None, use_scott_rule=True)
+    calibrator = get_calibrator(calibrator_name)
+    calibrator.fit(scores_cal, errors_cal)
 
     # Calibrate test scores
     calibrated_probs = calibrator.calibrate(scores_test)
 
-    # Compute metrics
+    # Compute metrics on TEST set
     results = compare_calibration(
         scores=scores_test,
         errors=errors_test,
         calibrated_probs=calibrated_probs,
-        n_bins=n_bins,
+        n_bins=n_bins_ece,
     )
 
     # Add calibrator parameters if available
     if hasattr(calibrator, 'get_params'):
         results['calibrator_params'] = calibrator.get_params()
 
+    # Add training info
+    if hasattr(calibrator, 'n_iterations_run'):
+        results['n_iterations_run'] = calibrator.n_iterations_run
+    if hasattr(calibrator, 'n_bins_actual'):
+        results['n_bins_actual'] = calibrator.n_bins_actual
+
     # Add error rate info
-    results['error_rate_train'] = float(errors_train.mean())
+    results['error_rate_cal'] = float(errors_cal.mean())
     results['error_rate_test'] = float(errors_test.mean())
 
     return results
@@ -147,18 +159,27 @@ def main():
     logger.info("=" * 60)
     logger.info(f"Model: {args.model}")
     logger.info(f"Dataset: {args.dataset}")
-    logger.info(f"Checkpoint: {args.checkpoint or 'None (base model)'}")
+    logger.info(f"Affine calibrator: {args.calibrator_checkpoint or 'None (raw probabilities)'}")
     logger.info(f"Calibration samples: {args.n_calibration}")
     logger.info(f"Test samples: {args.n_test}")
     logger.info(f"Shots: {args.n_shots}")
     logger.info(f"Scores: {args.scores}")
     logger.info(f"Calibrators: {args.calibrators}")
 
-    # Load model
+    # Load affine calibrator if provided
+    affine_calibrator = None
+    if args.calibrator_checkpoint:
+        logger.info(f"\nLoading affine calibrator from {args.calibrator_checkpoint}...")
+        with open(args.calibrator_checkpoint, 'rb') as f:
+            ckpt = pickle.load(f)
+        affine_calibrator = ckpt['calibrator']
+        logger.info(f"  Alpha: {affine_calibrator.alpha:.4f}")
+        logger.info(f"  Beta: {affine_calibrator.beta}")
+
+    # Load model (base model, no checkpoint - affine calibration is applied post-hoc)
     logger.info("\nLoading model...")
     classifier = LLMClassifier(
         model_name=args.model,
-        checkpoint_path=args.checkpoint,
     )
 
     # Load dataset
@@ -172,7 +193,7 @@ def main():
     )
     logger.info(f"Dataset loaded: {len(dataset.train_texts)} train, {len(dataset.test_texts)} test")
 
-    # Split train data: shots, calibration_train, calibration_test
+    # Split train data: shots, calibration (use all for fitting)
     rng = np.random.RandomState(args.seed)
     all_indices = rng.permutation(len(dataset.train_texts))
 
@@ -184,18 +205,13 @@ def main():
         shot_indices = []
         remaining_indices = all_indices
 
-    # Split remaining into calibration train/test
-    n_cal_train = int(args.n_calibration * args.calibration_split)
-    n_cal_test = args.n_calibration - n_cal_train
-
-    cal_train_indices = remaining_indices[:n_cal_train].tolist()
-    cal_test_indices = remaining_indices[n_cal_train:n_cal_train + n_cal_test].tolist()
+    # All remaining for calibration (no split - use ALL for fitting)
+    cal_indices = remaining_indices[:args.n_calibration].tolist()
 
     logger.info(f"\nData split:")
     logger.info(f"  Shots: {len(shot_indices)}")
-    logger.info(f"  Calibration train: {len(cal_train_indices)}")
-    logger.info(f"  Calibration test: {len(cal_test_indices)}")
-    logger.info(f"  Final test: {len(dataset.test_texts)}")
+    logger.info(f"  Calibration (ALL for fitting): {len(cal_indices)}")
+    logger.info(f"  Test (for evaluation): {len(dataset.test_texts)}")
 
     # Build preface with shots
     preface = dataset.get_few_shot_preface(
@@ -204,43 +220,53 @@ def main():
         seed=args.seed
     )
 
-    # Get probabilities for calibration train
-    logger.info("\nExtracting probabilities for calibration train...")
-    cal_train_prompts = [
+    # Get probabilities for calibration set (ALL used for fitting)
+    logger.info("\nExtracting probabilities for calibration set...")
+    cal_prompts = [
         dataset.build_prompt(preface, dataset.train_texts[i])
-        for i in cal_train_indices
+        for i in cal_indices
     ]
-    cal_train_probs = classifier.get_batch_label_probabilities(
-        cal_train_prompts,
+    cal_probs_raw = classifier.get_batch_label_probabilities(
+        cal_prompts,
         dataset.label_names,
         show_progress=True,
     )
-    cal_train_labels = np.array([dataset.train_labels[i] for i in cal_train_indices])
+    cal_labels = np.array([dataset.train_labels[i] for i in cal_indices])
 
-    # Get probabilities for calibration test
-    logger.info("\nExtracting probabilities for calibration test...")
-    cal_test_prompts = [
-        dataset.build_prompt(preface, dataset.train_texts[i])
-        for i in cal_test_indices
-    ]
-    cal_test_probs = classifier.get_batch_label_probabilities(
-        cal_test_prompts,
+    # Apply affine calibration if available
+    if affine_calibrator is not None:
+        logger.info("Applying affine calibration to calibration probabilities...")
+        cal_probs = affine_calibrator.calibrate(cal_probs_raw)
+    else:
+        cal_probs = cal_probs_raw
+
+    # Get probabilities for test set (for evaluation)
+    logger.info("\nExtracting probabilities for test set...")
+    test_prompts = dataset.build_prompts_for_split(preface, split="test")
+    test_probs_raw = classifier.get_batch_label_probabilities(
+        test_prompts,
         dataset.label_names,
         show_progress=True,
     )
-    cal_test_labels = np.array([dataset.train_labels[i] for i in cal_test_indices])
+    test_labels = np.array(dataset.test_labels)
+
+    # Apply affine calibration if available
+    if affine_calibrator is not None:
+        logger.info("Applying affine calibration to test probabilities...")
+        test_probs = affine_calibrator.calibrate(test_probs_raw)
+    else:
+        test_probs = test_probs_raw
 
     # Store all results
     all_results = {
         "config": {
             "dataset": args.dataset,
             "model": args.model,
-            "checkpoint": args.checkpoint,
+            "calibrator_checkpoint": args.calibrator_checkpoint,
             "n_calibration": args.n_calibration,
             "n_test": args.n_test,
-            "calibration_split": args.calibration_split,
             "n_shots": args.n_shots,
-            "n_bins": args.n_bins,
+            "n_bins_ece": args.n_bins_ece,
             "seed": args.seed,
         },
         "results": {},
@@ -250,6 +276,8 @@ def main():
     logger.info("\n" + "=" * 60)
     logger.info("Running calibration experiments...")
     logger.info("=" * 60)
+    logger.info("Note: Calibrators are fitted on ALL calibration data, evaluated on test set")
+    logger.info("      Uniform Mass uses Scott's rule for bins: B = 2 * N^(1/3)")
 
     for score_name in args.scores:
         logger.info(f"\n--- Score: {score_name} ---")
@@ -259,13 +287,13 @@ def main():
             logger.info(f"  Calibrator: {calibrator_name}")
 
             results = run_calibration_experiment(
-                probs_train=cal_train_probs,
-                labels_train=cal_train_labels,
-                probs_test=cal_test_probs,
-                labels_test=cal_test_labels,
+                probs_cal=cal_probs,
+                labels_cal=cal_labels,
+                probs_test=test_probs,
+                labels_test=test_labels,
                 score_name=score_name,
                 calibrator_name=calibrator_name,
-                n_bins=args.n_bins,
+                n_bins_ece=args.n_bins_ece,
                 logger=logger,
             )
 
