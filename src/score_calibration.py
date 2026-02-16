@@ -201,21 +201,97 @@ class PlattScaling(ScoreCalibrator):
         return {"alpha": self.alpha, "beta": self.beta}
 
 
-class TemperatureScaling(PlattScaling):
+class TemperatureScaling(ScoreCalibrator):
     """
     Temperature Scaling (PHC-TS) calibration.
 
-    Special case of Platt scaling with beta=0:
-        P(error | score) = sigmoid(alpha * score)
+    Transforms scores to logits first, then applies temperature scaling:
+        P(error | score) = sigmoid(alpha * logit(score))
 
-    Only learns the temperature parameter alpha.
+    where logit(x) = log(x / (1-x))
+
+    This ensures that positive alpha preserves the ranking (higher score = higher error prob).
+    Without the logit transform, scores in [0,1] with error rate < 0.5 would cause
+    the optimizer to learn negative alpha, inverting the ranking.
+
+    Only learns the temperature parameter alpha (must be > 0).
     """
 
     def __init__(self, n_iterations: int = 1000, lr: float = 0.1, patience: int = 10):
-        super().__init__(
-            learn_alpha=True, learn_beta=False,
-            n_iterations=n_iterations, lr=lr, patience=patience
-        )
+        self.n_iterations = n_iterations
+        self.lr = lr
+        self.patience = patience
+        self.alpha = 1.0
+        self.loss_history = []
+        self.n_iterations_run = 0
+
+    def _to_logits(self, scores: np.ndarray) -> np.ndarray:
+        """Transform scores from [0,1] to logits (-inf, +inf)."""
+        eps = 1e-7
+        scores_clipped = np.clip(scores, eps, 1 - eps)
+        return np.log(scores_clipped / (1 - scores_clipped))
+
+    def fit(self, scores: np.ndarray, errors: np.ndarray) -> None:
+        """
+        Fit alpha by minimizing binary cross-entropy with gradient descent.
+        Alpha is constrained to be positive.
+        """
+        # Transform scores to logits
+        logits = self._to_logits(scores)
+
+        # Initialize alpha (must be positive)
+        alpha = 1.0
+
+        best_loss = float('inf')
+        best_alpha = alpha
+        steps_without_improvement = 0
+        self.loss_history = []
+        n_samples = len(scores)
+
+        for iteration in range(self.n_iterations):
+            # Forward pass
+            scaled_logits = alpha * logits
+            probs = expit(scaled_logits)
+
+            # Compute binary cross-entropy loss
+            eps = 1e-10
+            probs_clipped = np.clip(probs, eps, 1 - eps)
+            loss = -np.mean(
+                errors * np.log(probs_clipped) + (1 - errors) * np.log(1 - probs_clipped)
+            )
+            self.loss_history.append(loss)
+
+            # Early stopping check
+            if loss < best_loss:
+                best_loss = loss
+                best_alpha = alpha
+                steps_without_improvement = 0
+            else:
+                steps_without_improvement += 1
+                if steps_without_improvement >= self.patience:
+                    break
+
+            # Compute gradient: d_loss/d_alpha
+            grad_logits = (probs - errors) / n_samples
+            grad_alpha = (grad_logits * logits).sum()
+
+            # Update alpha
+            alpha -= self.lr * grad_alpha
+
+            # Ensure alpha stays positive
+            alpha = max(alpha, 0.01)
+
+        self.alpha = best_alpha
+        self.n_iterations_run = iteration + 1
+
+    def calibrate(self, scores: np.ndarray) -> np.ndarray:
+        """Apply temperature scaling to get calibrated error probabilities."""
+        logits = self._to_logits(scores)
+        scaled_logits = self.alpha * logits
+        return expit(scaled_logits)
+
+    def get_params(self) -> dict:
+        return {"alpha": self.alpha, "beta": 0.0}
 
 
 class BiasOnlyCalibration(PlattScaling):
