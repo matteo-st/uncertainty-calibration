@@ -192,16 +192,34 @@ def run_calibration_experiment(
     calibrator = get_calibrator(calibrator_name)
     calibrator.fit(scores_cal, errors_cal)
 
-    # Calibrate test scores
-    calibrated_probs = calibrator.calibrate(scores_test)
+    # Calibrate both calibration and test scores
+    calibrated_probs_cal = calibrator.calibrate(scores_cal)
+    calibrated_probs_test = calibrator.calibrate(scores_test)
 
-    # Compute metrics on TEST set
-    results = compare_calibration(
-        scores=scores_test,
-        errors=errors_test,
-        calibrated_probs=calibrated_probs,
+    # Compute metrics on CALIBRATION set (training metrics)
+    results_cal = compare_calibration(
+        scores=scores_cal,
+        errors=errors_cal,
+        calibrated_probs=calibrated_probs_cal,
         n_bins=n_bins_ece,
     )
+
+    # Compute metrics on TEST set (generalization metrics)
+    results_test = compare_calibration(
+        scores=scores_test,
+        errors=errors_test,
+        calibrated_probs=calibrated_probs_test,
+        n_bins=n_bins_ece,
+    )
+
+    # Combine results
+    results = {
+        'cal_set': results_cal,
+        'test_set': results_test,
+        # Keep backward compatibility by also storing test metrics at top level
+        'before': results_test['before'],
+        'after': results_test['after'],
+    }
 
     # Add calibrator parameters if available
     if hasattr(calibrator, 'get_params'):
