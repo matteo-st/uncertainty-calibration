@@ -6,12 +6,16 @@ Implementation of calibration techniques from:
    using Large Language Models" (Estienne et al., 2023) - LLM posterior calibration
 2. "Adapting Language Models to Produce Good Class Probabilities for
    Classification Tasks" (Estienne et al., 2026, TMLR) - Post-hoc calibration
+3. "Uncertainty Estimation of Transformer Predictions for Misclassification
+   Detection" (Vazhentsev et al., ACL 2022) - Mahalanobis distance
 
 This package also implements uncertainty score calibration for error prediction.
 """
 
 from .models import LLMClassifier
 from .data import load_agnews, ClassificationDataset
+from .encoder_models import EncoderClassifier
+from .encoder_data import load_mrpc
 from .calibration import (
     Calibrator,
     ContentFreeCalibrator,
@@ -44,13 +48,16 @@ from .score_calibration import (
     IsotonicCalibration,
     get_calibrator,
 )
+from .mahalanobis import MahalanobisScorer, mahalanobis_distance
 
 __all__ = [
     # Models
     "LLMClassifier",
+    "EncoderClassifier",
     # Data
     "load_agnews",
     "ClassificationDataset",
+    "load_mrpc",
     # LLM Calibration
     "Calibrator",
     "ContentFreeCalibrator",
@@ -66,6 +73,9 @@ __all__ = [
     "compute_doctor",
     "compute_doctor_normalized",
     "prepare_calibration_data",
+    # Mahalanobis Distance
+    "MahalanobisScorer",
+    "mahalanobis_distance",
     # Score Calibration
     "ScoreCalibrator",
     "NoCalibration",

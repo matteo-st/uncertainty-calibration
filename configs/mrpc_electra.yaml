@@ -1,0 +1,57 @@
+# ELECTRA on MRPC with Mahalanobis Distance
+#
+# Reference: Vazhentsev et al. (ACL 2022)
+# "Uncertainty Estimation of Transformer Predictions for Misclassification Detection"
+#
+# Two variants (controlled by model.use_spectral_norm):
+#   - MD (no SN): use_spectral_norm=false, lr=5e-5, epochs=12
+#   - MD SN:      use_spectral_norm=true,  lr=3e-5, epochs=11
+#
+# This config file defines the MD (no SN) variant by default.
+# Override for MD SN via CLI: --use_spectral_norm --learning_rate 3e-5 --num_train_epochs 11
+
+dataset:
+  name: mrpc
+  n_cal: 600
+  # n_train: 3068 (= 3668 - n_cal, computed automatically)
+  # n_test: 408 (full GLUE validation, determined automatically)
+  max_length: 128
+
+model:
+  name: google/electra-base-discriminator
+  num_labels: 2
+  use_spectral_norm: false  # Set to true for MD SN variant
+
+training:
+  learning_rate: 5.0e-5      # 3e-5 for MD SN
+  per_device_train_batch_size: 32
+  num_train_epochs: 12        # 11 for MD SN
+  weight_decay: 0.1
+  warmup_ratio: 0.1
+  seed: 42
+
+uncertainty:
+  scores:
+    - mahalanobis_distance
+    - max_proba_complement
+    - margin
+    - doctor
+    - doctor_normalized
+
+score_calibration:
+  # PHC methods (phc_dp, phc_ts, phc_bo) are deferred for unbounded MD scores.
+  # They are included for softmax-based scores which are in [0,1].
+  methods:
+    - none
+    - uniform_mass
+    # - phc_dp      # Deferred for MD (requires scores in [0,1])
+    # - phc_ts      # Deferred for MD
+    # - phc_bo      # Deferred for MD
+
+evaluation:
+  n_seeds: 6       # To match paper (6 seeds, mean +/- std)
+  n_bins_ece: null  # Use Scott's rule: B = floor(2 * N^(1/3))
+
+output:
+  dir: results/encoder_experiments
+  cache_dir: cache/encoder
