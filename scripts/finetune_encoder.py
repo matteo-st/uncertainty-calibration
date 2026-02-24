@@ -1,32 +1,37 @@
 #!/usr/bin/env python3
 """
-Fine-tune ELECTRA on MRPC and extract features for Mahalanobis distance.
+Fine-tune an encoder model and extract features for Mahalanobis distance.
 
-This script implements Step 5 of the ELECTRA/MRPC experiment plan:
-1. Load MRPC data with train/cal/test splits
-2. Fine-tune ELECTRA on the training split
+Supports multiple datasets (MRPC, SST2) and model variants (MD, MD SN).
+
+Pipeline:
+1. Load dataset with train/cal/test splits
+2. Fine-tune encoder on the training split
 3. Evaluate classification accuracy on all splits
 4. Extract penultimate-layer features from all splits
 5. Fit MahalanobisScorer on training features
 6. Compute MD scores on calibration and test sets
 7. Save everything to cache (model, features, scorer, scores, probabilities)
 
-Supports two model variants:
-- MD (no SN): Standard ELECTRA, lr=5e-5, epochs=12
-- MD SN: ELECTRA with spectral normalization, lr=3e-5, epochs=11
-
 Usage:
-    # Standard MD variant
-    python finetune_electra_mrpc.py --config configs/mrpc_electra.yaml
+    # MRPC - Standard MD variant
+    python finetune_encoder.py --config configs/mrpc_electra.yaml
 
-    # MD SN variant
-    python finetune_electra_mrpc.py --config configs/mrpc_electra.yaml \
+    # MRPC - MD SN variant
+    python finetune_encoder.py --config configs/mrpc_electra.yaml \
         --use_spectral_norm --learning_rate 3e-5 --num_train_epochs 11
 
-    # Quick test with small data
-    python finetune_electra_mrpc.py --n_cal 50 --num_train_epochs 1
+    # SST2 - Standard MD variant
+    python finetune_encoder.py --config configs/sst2_electra.yaml
 
-Prerequisite: None (this is the first step of the encoder experiment).
+    # SST2 - MD SN variant
+    python finetune_encoder.py --config configs/sst2_electra.yaml \
+        --use_spectral_norm --learning_rate 5e-5 --num_train_epochs 7 \
+        --weight_decay 0.01
+
+    # Quick test with small data
+    python finetune_encoder.py --dataset sst2 --n_train 200 --n_cal 50 \
+        --num_train_epochs 1
 """
 
 import argparse
@@ -39,21 +44,35 @@ import numpy as np
 import json
 import logging
 
-from src.encoder_data import load_mrpc
+from src.encoder_data import load_encoder_dataset
 from src.encoder_models import EncoderClassifier
 from src.mahalanobis import MahalanobisScorer
 from src.uncertainty import compute_uncertainty_scores, get_predictions_and_errors
 from src.utils import set_seed, setup_logging, load_config
 
 
+# Dataset-specific classification report labels
+DATASET_LABELS = {
+    "mrpc": ["Not Paraphrase", "Paraphrase"],
+    "sst2": ["Negative", "Positive"],
+}
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Fine-tune ELECTRA on MRPC and extract MD features"
+        description="Fine-tune encoder model and extract MD features"
     )
 
     # Configuration file (optional, CLI args override config)
     parser.add_argument("--config", type=str, default=None,
                         help="Path to YAML config file")
+
+    # Dataset
+    parser.add_argument("--dataset", type=str, default="mrpc",
+                        choices=["mrpc", "sst2"],
+                        help="Dataset to fine-tune on")
+    parser.add_argument("--n_train", type=int, default=None,
+                        help="Explicit train size (None = use all available minus n_cal)")
 
     # Model
     parser.add_argument("--model_name", type=str,
@@ -64,7 +83,7 @@ def parse_args():
 
     # Data
     parser.add_argument("--n_cal", type=int, default=600,
-                        help="Number of calibration samples from MRPC train")
+                        help="Number of calibration samples from train set")
     parser.add_argument("--max_length", type=int, default=128)
 
     # Training hyperparameters
@@ -93,10 +112,14 @@ def apply_config(args, config: dict) -> None:
     """
     Apply YAML config values to args, without overriding CLI-provided values.
 
-    Config structure matches configs/mrpc_electra.yaml.
+    Config structure matches configs/mrpc_electra.yaml or configs/sst2_electra.yaml.
     """
     # Dataset config
     ds = config.get("dataset", {})
+    if "name" in ds:
+        args.dataset = ds["name"]
+    if args.n_train is None and "n_train" in ds:
+        args.n_train = ds["n_train"]
     if args.n_cal == 600 and "n_cal" in ds:
         args.n_cal = ds["n_cal"]
     if args.max_length == 128 and "max_length" in ds:
@@ -131,10 +154,11 @@ def apply_config(args, config: dict) -> None:
 
 
 def get_variant_name(args) -> str:
-    """Get a descriptive name for the model variant."""
+    """Get a descriptive name for the model variant (includes dataset)."""
+    base = f"electra_{args.dataset}"
     if args.use_spectral_norm:
-        return "electra_mrpc_sn"
-    return "electra_mrpc"
+        return f"{base}_sn"
+    return base
 
 
 def get_cache_prefix(cache_dir: Path, variant: str, seed: int) -> str:
@@ -159,8 +183,9 @@ def main():
     cache_prefix = get_cache_prefix(cache_dir, variant, args.seed)
 
     logger.info("=" * 70)
-    logger.info("ELECTRA/MRPC Fine-tuning and Feature Extraction")
+    logger.info(f"Encoder Fine-tuning and Feature Extraction")
     logger.info("=" * 70)
+    logger.info(f"Dataset: {args.dataset}")
     logger.info(f"Variant: {variant}")
     logger.info(f"Model: {args.model_name}")
     logger.info(f"Spectral norm: {args.use_spectral_norm}")
@@ -169,6 +194,7 @@ def main():
     logger.info(f"Batch size: {args.per_device_train_batch_size}")
     logger.info(f"Weight decay: {args.weight_decay}")
     logger.info(f"Warmup ratio: {args.warmup_ratio}")
+    logger.info(f"n_train: {args.n_train if args.n_train else 'all available'}")
     logger.info(f"n_cal: {args.n_cal}")
     logger.info(f"Max length: {args.max_length}")
     logger.info(f"Seed: {args.seed}")
@@ -176,14 +202,16 @@ def main():
     logger.info(f"Cache prefix: {cache_prefix}")
 
     # =========================================================================
-    # Step 1: Load MRPC data
+    # Step 1: Load dataset
     # =========================================================================
     logger.info("\n" + "=" * 70)
-    logger.info("Step 1: Loading MRPC dataset")
+    logger.info(f"Step 1: Loading {args.dataset.upper()} dataset")
     logger.info("=" * 70)
 
-    data = load_mrpc(
+    data = load_encoder_dataset(
+        dataset_name=args.dataset,
         model_name=args.model_name,
+        n_train=args.n_train,
         n_cal=args.n_cal,
         max_length=args.max_length,
         seed=args.seed,
@@ -198,10 +226,10 @@ def main():
     logger.info(f"Test: {data['n_test']} samples")
 
     # =========================================================================
-    # Step 2: Fine-tune ELECTRA (or load from checkpoint)
+    # Step 2: Fine-tune encoder (or load from checkpoint)
     # =========================================================================
     logger.info("\n" + "=" * 70)
-    logger.info("Step 2: Fine-tuning ELECTRA")
+    logger.info("Step 2: Fine-tuning encoder")
     logger.info("=" * 70)
 
     model_save_dir = cache_dir / f"{variant}_model_seed{args.seed}"
@@ -275,8 +303,9 @@ def main():
     test_f1 = f1_score(test_labels, test_preds)
     logger.info(f"  Test F1: {test_f1:.4f}")
     logger.info(f"\nTest set classification report:")
+    target_names = DATASET_LABELS.get(args.dataset)
     logger.info("\n" + classification_report(
-        test_labels, test_preds, target_names=["Not Paraphrase", "Paraphrase"]
+        test_labels, test_preds, target_names=target_names
     ))
 
     # =========================================================================
@@ -379,6 +408,7 @@ def main():
 
     # Save experiment metadata
     metadata = {
+        "dataset": args.dataset,
         "variant": variant,
         "model_name": args.model_name,
         "use_spectral_norm": args.use_spectral_norm,
@@ -413,6 +443,7 @@ def main():
     logger.info("\n" + "=" * 70)
     logger.info("SUMMARY")
     logger.info("=" * 70)
+    logger.info(f"Dataset: {args.dataset}")
     logger.info(f"Variant: {variant}")
     logger.info(f"Model: {args.model_name}")
     logger.info(f"Spectral norm: {args.use_spectral_norm}")

@@ -1,0 +1,54 @@
+# ELECTRA on SST2 with Mahalanobis Distance
+#
+# Reference: Vazhentsev et al. (ACL 2022)
+# "Uncertainty Estimation of Transformer Predictions for Misclassification Detection"
+# Hyperparameters from: optimal_hyperparameters/electra/raw_sst2_*.yaml
+#
+# Two variants (controlled by model.use_spectral_norm):
+#   - MD (no SN): use_spectral_norm=false, lr=1e-5, epochs=15, batch=64, wd=0.1
+#   - MD SN:      use_spectral_norm=true,  lr=5e-5, epochs=7,  batch=64, wd=0.01
+#
+# This config file defines the MD (no SN) variant by default.
+# Override for MD SN via CLI:
+#   --use_spectral_norm --learning_rate 5e-5 --num_train_epochs 7 --weight_decay 0.01
+
+dataset:
+  name: sst2
+  n_train: 60000             # Use 60k for training, reserve rest for calibration ablation
+  n_cal: 600
+  # n_test: 872 (full GLUE validation, determined automatically)
+  max_length: 128
+
+model:
+  name: google/electra-base-discriminator
+  num_labels: 2
+  use_spectral_norm: false
+
+training:
+  learning_rate: 1.0e-5       # 5e-5 for MD SN
+  per_device_train_batch_size: 64
+  num_train_epochs: 15         # 7 for MD SN
+  weight_decay: 0.1            # 0.01 for MD SN
+  warmup_ratio: 0.1
+  seed: 42
+
+uncertainty:
+  scores:
+    - mahalanobis_distance
+    - max_proba_complement
+    - margin
+    - doctor
+    - doctor_normalized
+
+score_calibration:
+  methods:
+    - none
+    - uniform_mass
+
+evaluation:
+  n_seeds: 6       # To match paper (6 seeds, mean +/- std)
+  n_bins_ece: null  # Use Scott's rule: B = floor(2 * N^(1/3))
+
+output:
+  dir: results/encoder_experiments
+  cache_dir: cache/encoder

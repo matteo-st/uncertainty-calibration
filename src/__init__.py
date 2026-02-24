@@ -15,7 +15,7 @@ This package also implements uncertainty score calibration for error prediction.
 from .models import LLMClassifier
 from .data import load_agnews, ClassificationDataset
 from .encoder_models import EncoderClassifier
-from .encoder_data import load_mrpc
+from .encoder_data import load_encoder_dataset, load_mrpc
 from .calibration import (
     Calibrator,
     ContentFreeCalibrator,
@@ -57,6 +57,7 @@ __all__ = [
     # Data
     "load_agnews",
     "ClassificationDataset",
+    "load_encoder_dataset",
     "load_mrpc",
     # LLM Calibration
     "Calibrator",

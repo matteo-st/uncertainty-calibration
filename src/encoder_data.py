@@ -1,9 +1,17 @@
 """
 Dataset loading for encoder-based classification experiments.
 
-Handles MRPC (and potentially other GLUE tasks) with train/cal/test splits.
+Supports multiple GLUE tasks (MRPC, SST2) with train/cal/test splits.
 Unlike data.py (prompt-based for decoder LMs), this module produces
-tokenized input pairs for standard sequence classification.
+tokenized inputs for standard sequence classification.
+
+Usage:
+    # Generic dispatcher (preferred)
+    data = load_encoder_dataset("mrpc", n_cal=600)
+    data = load_encoder_dataset("sst2", n_train=60000, n_cal=600)
+
+    # Backward-compatible wrapper
+    data = load_mrpc(n_cal=600)
 """
 
 import numpy as np
@@ -15,25 +23,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def load_mrpc(
+def load_encoder_dataset(
+    dataset_name: str,
     model_name: str = "google/electra-base-discriminator",
+    n_train: Optional[int] = None,
     n_cal: int = 600,
     max_length: int = 128,
     seed: int = 42,
 ) -> Dict:
     """
-    Load MRPC dataset with train/cal/test splits for encoder classification.
+    Load a dataset for encoder classification experiments.
 
-    The MRPC training set (3,668 samples) is split into:
-    - Train: first (3668 - n_cal) samples after shuffling -- for fine-tuning
-    - Cal: last n_cal samples after shuffling -- for score calibration
-    The GLUE validation set (408 samples) is used as the test set
-    (standard practice since GLUE test labels are private).
-
-    Shuffling uses a fixed seed for reproducibility. The split is deterministic.
+    Supports MRPC (sentence pair) and SST2 (single sentence).
+    Handles train/cal/test splitting, tokenization, and format setup.
 
     Args:
+        dataset_name: Dataset identifier ("mrpc" or "sst2")
         model_name: HuggingFace model name (determines tokenizer)
+        n_train: Explicit train size. If None, uses all available minus n_cal.
         n_cal: Number of calibration samples (reserved from training set)
         max_length: Maximum sequence length for tokenization
         seed: Random seed for shuffling before splitting
@@ -44,43 +51,42 @@ def load_mrpc(
             - cal_dataset: HuggingFace Dataset for score calibration
             - test_dataset: HuggingFace Dataset for evaluation
             - tokenizer: Pre-trained tokenizer
-            - n_train: Actual number of training samples
-            - n_cal: Actual number of calibration samples
-            - n_test: Actual number of test samples
-            - num_labels: Number of classes (2 for MRPC)
+            - n_train, n_cal, n_test: Actual split sizes
+            - num_labels: Number of classes
+    """
+    if dataset_name == "mrpc":
+        return _load_mrpc(model_name, n_train, n_cal, max_length, seed)
+    elif dataset_name == "sst2":
+        return _load_sst2(model_name, n_train, n_cal, max_length, seed)
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}. Supported: mrpc, sst2")
+
+
+def load_mrpc(
+    model_name: str = "google/electra-base-discriminator",
+    n_cal: int = 600,
+    max_length: int = 128,
+    seed: int = 42,
+) -> Dict:
+    """Backward-compatible wrapper. Delegates to load_encoder_dataset("mrpc", ...)."""
+    return load_encoder_dataset("mrpc", model_name=model_name, n_cal=n_cal,
+                                max_length=max_length, seed=seed)
+
+
+def _load_mrpc(model_name, n_train, n_cal, max_length, seed) -> Dict:
+    """
+    Load MRPC dataset with train/cal/test splits.
+
+    MRPC is a sentence-pair task (paraphrase detection, 2 classes).
+    Train set: 3,668 samples. Test set: GLUE validation (408 samples).
     """
     logger.info("Loading MRPC dataset from GLUE...")
     raw_datasets = load_dataset("glue", "mrpc")
-
-    # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    # Get full training set
     full_train = raw_datasets["train"]
-    n_total_train = len(full_train)
-    n_train = n_total_train - n_cal
-
-    logger.info(f"MRPC full training set: {n_total_train} samples")
-    logger.info(f"Split: train={n_train}, cal={n_cal}")
-    logger.info(f"Test set (GLUE validation): {len(raw_datasets['validation'])} samples")
-
-    if n_cal >= n_total_train:
-        raise ValueError(
-            f"n_cal={n_cal} must be less than total training size={n_total_train}"
-        )
-
-    # Shuffle training set with fixed seed, then split
-    rng = np.random.RandomState(seed)
-    shuffled_indices = rng.permutation(n_total_train).tolist()
-
-    train_indices = shuffled_indices[:n_train]
-    cal_indices = shuffled_indices[n_train:]
-
-    train_dataset = full_train.select(train_indices)
-    cal_dataset = full_train.select(cal_indices)
     test_dataset = raw_datasets["validation"]
 
-    # Tokenize all splits
     def tokenize_fn(examples):
         return tokenizer(
             examples["sentence1"],
@@ -90,21 +96,143 @@ def load_mrpc(
             truncation=True,
         )
 
+    train_dataset, cal_dataset = _split_train_cal(
+        full_train, n_train, n_cal, seed, dataset_name="MRPC"
+    )
+
+    train_dataset, cal_dataset, test_dataset = _finalize_splits(
+        train_dataset, cal_dataset, test_dataset, tokenize_fn
+    )
+
+    return {
+        "train_dataset": train_dataset,
+        "cal_dataset": cal_dataset,
+        "test_dataset": test_dataset,
+        "tokenizer": tokenizer,
+        "n_train": len(train_dataset),
+        "n_cal": len(cal_dataset),
+        "n_test": len(test_dataset),
+        "num_labels": 2,
+    }
+
+
+def _load_sst2(model_name, n_train, n_cal, max_length, seed) -> Dict:
+    """
+    Load SST2 dataset with train/cal/test splits.
+
+    SST2 is a single-sentence task (binary sentiment, 2 classes).
+    Train set: 67,349 samples. Test set: GLUE validation (872 samples).
+    """
+    logger.info("Loading SST2 dataset from GLUE...")
+    raw_datasets = load_dataset("glue", "sst2")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    full_train = raw_datasets["train"]
+    test_dataset = raw_datasets["validation"]
+
+    def tokenize_fn(examples):
+        return tokenizer(
+            examples["sentence"],
+            padding="max_length",
+            max_length=max_length,
+            truncation=True,
+        )
+
+    train_dataset, cal_dataset = _split_train_cal(
+        full_train, n_train, n_cal, seed, dataset_name="SST2"
+    )
+
+    train_dataset, cal_dataset, test_dataset = _finalize_splits(
+        train_dataset, cal_dataset, test_dataset, tokenize_fn
+    )
+
+    return {
+        "train_dataset": train_dataset,
+        "cal_dataset": cal_dataset,
+        "test_dataset": test_dataset,
+        "tokenizer": tokenizer,
+        "n_train": len(train_dataset),
+        "n_cal": len(cal_dataset),
+        "n_test": len(test_dataset),
+        "num_labels": 2,
+    }
+
+
+def _split_train_cal(full_train, n_train, n_cal, seed, dataset_name):
+    """
+    Split a full training set into train and calibration subsets.
+
+    Shuffles with a fixed seed, then selects:
+    - If n_train is None: train = all except last n_cal, cal = last n_cal
+    - If n_train is set: train = first n_train, cal = next n_cal
+
+    Args:
+        full_train: Full HuggingFace training Dataset
+        n_train: Explicit train size (None = use all available minus n_cal)
+        n_cal: Calibration set size
+        seed: Random seed for shuffling
+        dataset_name: Name for logging
+
+    Returns:
+        (train_dataset, cal_dataset)
+    """
+    n_total = len(full_train)
+
+    rng = np.random.RandomState(seed)
+    shuffled_indices = rng.permutation(n_total).tolist()
+
+    if n_train is not None:
+        if n_train + n_cal > n_total:
+            raise ValueError(
+                f"n_train={n_train} + n_cal={n_cal} = {n_train + n_cal} "
+                f"> total training size={n_total}"
+            )
+        train_indices = shuffled_indices[:n_train]
+        cal_indices = shuffled_indices[n_train:n_train + n_cal]
+        n_reserved = n_total - n_train - n_cal
+    else:
+        if n_cal >= n_total:
+            raise ValueError(
+                f"n_cal={n_cal} must be less than total training size={n_total}"
+            )
+        n_train = n_total - n_cal
+        train_indices = shuffled_indices[:n_train]
+        cal_indices = shuffled_indices[n_train:]
+        n_reserved = 0
+
+    logger.info(f"{dataset_name} full training set: {n_total} samples")
+    logger.info(f"Split: train={n_train}, cal={n_cal}"
+                + (f", reserved={n_reserved}" if n_reserved > 0 else ""))
+
+    train_dataset = full_train.select(train_indices)
+    cal_dataset = full_train.select(cal_indices)
+
+    return train_dataset, cal_dataset
+
+
+def _finalize_splits(train_dataset, cal_dataset, test_dataset, tokenize_fn):
+    """
+    Tokenize all splits, set PyTorch format, and report label distributions.
+
+    Args:
+        train_dataset, cal_dataset, test_dataset: HuggingFace Datasets (raw)
+        tokenize_fn: Tokenization function (dataset-specific)
+
+    Returns:
+        (train_dataset, cal_dataset, test_dataset) -- tokenized and formatted
+    """
+    # Tokenize
     train_dataset = train_dataset.map(tokenize_fn, batched=True)
     cal_dataset = cal_dataset.map(tokenize_fn, batched=True)
     test_dataset = test_dataset.map(tokenize_fn, batched=True)
 
     # Set format for PyTorch
     columns = ["input_ids", "attention_mask", "token_type_ids", "label"]
-    # Some tokenizers may not produce token_type_ids
-    available_columns = [
-        c for c in columns if c in train_dataset.column_names
-    ]
+    available_columns = [c for c in columns if c in train_dataset.column_names]
     train_dataset.set_format("torch", columns=available_columns)
     cal_dataset.set_format("torch", columns=available_columns)
     test_dataset.set_format("torch", columns=available_columns)
 
-    logger.info(f"Tokenized with max_length={max_length}")
     logger.info(f"Final sizes: train={len(train_dataset)}, "
                 f"cal={len(cal_dataset)}, test={len(test_dataset)}")
 
@@ -117,13 +245,6 @@ def load_mrpc(
                     f"0={counts[0]} ({counts[0]/len(labels)*100:.1f}%), "
                     f"1={counts[1]} ({counts[1]/len(labels)*100:.1f}%)")
 
-    return {
-        "train_dataset": train_dataset,
-        "cal_dataset": cal_dataset,
-        "test_dataset": test_dataset,
-        "tokenizer": tokenizer,
-        "n_train": len(train_dataset),
-        "n_cal": len(cal_dataset),
-        "n_test": len(test_dataset),
-        "num_labels": 2,
-    }
+    logger.info(f"Test set: {len(test_dataset)} samples (GLUE validation)")
+
+    return train_dataset, cal_dataset, test_dataset
