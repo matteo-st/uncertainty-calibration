@@ -213,17 +213,8 @@ def run_single_experiment(
         )
         return {"skipped": True, "reason": "PHC requires bounded scores"}
 
-    # Fit calibrator
-    calibrator = get_calibrator(calibrator_name)
-    calibrator.fit(scores_cal, errors_cal)
-
-    # Calibrate
-    calibrated_cal = calibrator.calibrate(scores_cal)
-    calibrated_test = calibrator.calibrate(scores_test)
-
-    # Compute ROCAUC (works on any score, bounded or not)
+    # Compute ROCAUC on raw scores (works for any score, bounded or not)
     rocauc_before = compute_rocauc(scores_test, errors_test)
-    rocauc_after = compute_rocauc(calibrated_test, errors_test)
 
     # Scott's rule for number of bins
     n_bins_scott = int(2 * (len(scores_test) ** (1/3)))
@@ -232,6 +223,34 @@ def run_single_experiment(
     results = {
         "skipped": False,
     }
+
+    # For unbounded scores with 'none' calibrator: NoCalibration clips to [0,1]
+    # which destroys unbounded scores. Only report raw ROCAUC, skip ECE/BCE.
+    if is_unbounded and calibrator_name == "none":
+        results["before"] = {
+            "rocauc": float(rocauc_before),
+            "ece": None,
+            "binary_cross_entropy": None,
+        }
+        results["after"] = {
+            "rocauc": float(rocauc_before),  # Same as before (no calibration)
+            "ece": None,
+            "binary_cross_entropy": None,
+        }
+        results["error_rate_cal"] = float(errors_cal.mean())
+        results["error_rate_test"] = float(errors_test.mean())
+        return results
+
+    # Fit calibrator
+    calibrator = get_calibrator(calibrator_name)
+    calibrator.fit(scores_cal, errors_cal)
+
+    # Calibrate
+    calibrated_cal = calibrator.calibrate(scores_cal)
+    calibrated_test = calibrator.calibrate(scores_test)
+
+    # Compute ROCAUC on calibrated scores
+    rocauc_after = compute_rocauc(calibrated_test, errors_test)
 
     if is_unbounded:
         # Unbounded scores: ECE/BCE only after calibration
@@ -465,13 +484,20 @@ def main():
                 rocauc_str = f"{before['rocauc']:.4f} -> {after['rocauc']:.4f}"
                 logger.info(f"    ROCAUC: {rocauc_str}")
 
-                if before.get("ece") is not None:
-                    logger.info(f"    ECE:    {before['ece']:.4f} -> {after['ece']:.4f}")
-                    logger.info(f"    BCE:    {before['binary_cross_entropy']:.4f} -> "
-                              f"{after['binary_cross_entropy']:.4f}")
+                ece_before = before.get("ece")
+                ece_after = after.get("ece")
+                bce_before = before.get("binary_cross_entropy")
+                bce_after = after.get("binary_cross_entropy")
+
+                if ece_before is not None and ece_after is not None:
+                    logger.info(f"    ECE:    {ece_before:.4f} -> {ece_after:.4f}")
+                    logger.info(f"    BCE:    {bce_before:.4f} -> {bce_after:.4f}")
+                elif ece_after is not None:
+                    logger.info(f"    ECE:    N/A -> {ece_after:.4f}")
+                    logger.info(f"    BCE:    N/A -> {bce_after:.4f}")
                 else:
-                    logger.info(f"    ECE:    N/A -> {after['ece']:.4f}")
-                    logger.info(f"    BCE:    N/A -> {after['binary_cross_entropy']:.4f}")
+                    logger.info(f"    ECE:    N/A (no calibration applied)")
+                    logger.info(f"    BCE:    N/A (no calibration applied)")
 
     # =========================================================================
     # Save results
