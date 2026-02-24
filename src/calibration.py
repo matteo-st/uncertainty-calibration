@@ -274,22 +274,27 @@ class AffineCalibrator(Calibrator):
         learn_alpha: bool = True,
         n_iterations: int = 100,
         lr: float = 0.1,
+        patience: int = 10,
     ):
         """
         Args:
             learn_alpha: Whether to learn alpha (if False, fix alpha=1)
-            n_iterations: Number of optimization iterations
+            n_iterations: Maximum number of optimization iterations
             lr: Learning rate
+            patience: Early stopping patience (stop if loss doesn't improve for this many steps)
         """
         self.learn_alpha = learn_alpha
         self.n_iterations = n_iterations
         self.lr = lr
+        self.patience = patience
         self.alpha = None
         self.beta = None
+        self.loss_history = []
 
     def fit(self, probs_train: np.ndarray, labels_train: Optional[np.ndarray] = None):
         """
         Minimize cross-entropy loss (Eq. 9) to learn parameters.
+        Uses early stopping if loss doesn't decrease for `patience` steps.
         """
         if labels_train is None:
             raise ValueError("AffineCalibrator requires labeled training data")
@@ -302,7 +307,14 @@ class AffineCalibrator(Calibrator):
 
         log_probs = np.log(probs_train + 1e-10)
 
-        for _ in range(self.n_iterations):
+        # Early stopping tracking
+        best_loss = float('inf')
+        best_alpha = alpha
+        best_beta = beta.copy()
+        steps_without_improvement = 0
+        self.loss_history = []
+
+        for iteration in range(self.n_iterations):
             # Forward pass
             if self.learn_alpha:
                 logits = alpha * log_probs + beta
@@ -313,6 +325,22 @@ class AffineCalibrator(Calibrator):
             logits_max = logits.max(axis=1, keepdims=True)
             exp_logits = np.exp(logits - logits_max)
             calibrated = exp_logits / exp_logits.sum(axis=1, keepdims=True)
+
+            # Compute cross-entropy loss
+            log_calibrated = np.log(calibrated + 1e-10)
+            loss = -np.mean(log_calibrated[np.arange(n_samples), labels_train])
+            self.loss_history.append(loss)
+
+            # Early stopping check
+            if loss < best_loss:
+                best_loss = loss
+                best_alpha = alpha
+                best_beta = beta.copy()
+                steps_without_improvement = 0
+            else:
+                steps_without_improvement += 1
+                if steps_without_improvement >= self.patience:
+                    break
 
             # Gradient of cross-entropy
             # d_loss/d_logits = calibrated - one_hot(labels)
@@ -330,8 +358,10 @@ class AffineCalibrator(Calibrator):
                 alpha -= self.lr * grad_alpha
                 alpha = max(0.01, alpha)  # Keep alpha positive
 
-        self.alpha = alpha
-        self.beta = beta
+        # Use best parameters
+        self.alpha = best_alpha
+        self.beta = best_beta
+        self.n_iterations_run = iteration + 1
 
     def calibrate(self, probs: np.ndarray) -> np.ndarray:
         """Apply learned affine transformation."""
