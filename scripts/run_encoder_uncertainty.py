@@ -213,17 +213,8 @@ def run_single_experiment(
         )
         return {"skipped": True, "reason": "PHC requires bounded scores"}
 
-    # Fit calibrator
-    calibrator = get_calibrator(calibrator_name)
-    calibrator.fit(scores_cal, errors_cal)
-
-    # Calibrate
-    calibrated_cal = calibrator.calibrate(scores_cal)
-    calibrated_test = calibrator.calibrate(scores_test)
-
-    # Compute ROCAUC (works on any score, bounded or not)
+    # Compute ROCAUC on raw scores (works for any score, bounded or not)
     rocauc_before = compute_rocauc(scores_test, errors_test)
-    rocauc_after = compute_rocauc(calibrated_test, errors_test)
 
     # Scott's rule for number of bins
     n_bins_scott = int(2 * (len(scores_test) ** (1/3)))
@@ -232,6 +223,34 @@ def run_single_experiment(
     results = {
         "skipped": False,
     }
+
+    # For unbounded scores with 'none' calibrator: NoCalibration clips to [0,1]
+    # which destroys unbounded scores. Only report raw ROCAUC, skip ECE/BCE.
+    if is_unbounded and calibrator_name == "none":
+        results["before"] = {
+            "rocauc": float(rocauc_before),
+            "ece": None,
+            "binary_cross_entropy": None,
+        }
+        results["after"] = {
+            "rocauc": float(rocauc_before),  # Same as before (no calibration)
+            "ece": None,
+            "binary_cross_entropy": None,
+        }
+        results["error_rate_cal"] = float(errors_cal.mean())
+        results["error_rate_test"] = float(errors_test.mean())
+        return results
+
+    # Fit calibrator
+    calibrator = get_calibrator(calibrator_name)
+    calibrator.fit(scores_cal, errors_cal)
+
+    # Calibrate
+    calibrated_cal = calibrator.calibrate(scores_cal)
+    calibrated_test = calibrator.calibrate(scores_test)
+
+    # Compute ROCAUC on calibrated scores
+    rocauc_after = compute_rocauc(calibrated_test, errors_test)
 
     if is_unbounded:
         # Unbounded scores: ECE/BCE only after calibration
