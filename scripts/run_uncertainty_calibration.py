@@ -196,12 +196,16 @@ def run_calibration_experiment(
     calibrated_probs_cal = calibrator.calibrate(scores_cal)
     calibrated_probs_test = calibrator.calibrate(scores_test)
 
+    # Determine if calibrated output is discrete (binning-based calibrators)
+    is_discrete = calibrator_name in {"uniform_mass", "quantile", "quantile_binning"}
+
     # Compute metrics on CALIBRATION set (training metrics)
     results_cal = compare_calibration(
         scores=scores_cal,
         errors=errors_cal,
         calibrated_probs=calibrated_probs_cal,
         n_bins=n_bins_ece,
+        calibrated_discrete=is_discrete,
     )
 
     # Compute metrics on TEST set (generalization metrics)
@@ -210,6 +214,7 @@ def run_calibration_experiment(
         errors=errors_test,
         calibrated_probs=calibrated_probs_test,
         n_bins=n_bins_ece,
+        calibrated_discrete=is_discrete,
     )
 
     # Combine results

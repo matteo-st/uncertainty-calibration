@@ -16,6 +16,9 @@ scikit-learn
 matplotlib
 seaborn
 
+# Hyperparameter optimization
+optuna>=3.0.0
+
 # Utilities
 tqdm
 pyyaml

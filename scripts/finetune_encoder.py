@@ -55,6 +55,8 @@ from src.utils import set_seed, setup_logging, load_config
 DATASET_LABELS = {
     "mrpc": ["Not Paraphrase", "Paraphrase"],
     "sst2": ["Negative", "Positive"],
+    "cola": ["Unacceptable", "Acceptable"],
+    "agnews": ["World", "Sports", "Business", "Sci/Tech"],
 }
 
 
@@ -69,7 +71,7 @@ def parse_args():
 
     # Dataset
     parser.add_argument("--dataset", type=str, default="mrpc",
-                        choices=["mrpc", "sst2"],
+                        choices=["mrpc", "sst2", "cola", "agnews"],
                         help="Dataset to fine-tune on")
     parser.add_argument("--n_train", type=int, default=None,
                         help="Explicit train size (None = use all available minus n_cal)")
@@ -105,57 +107,82 @@ def parse_args():
     parser.add_argument("--skip_training", action="store_true",
                         help="Skip training, load existing model checkpoint")
 
-    return parser.parse_args()
+    # Track which args were explicitly provided on the CLI
+    # so apply_config() can avoid overriding them.
+    args = parser.parse_args()
+    defaults = parser.parse_args([])
+    cli_args = set()
+    for key in vars(args):
+        if getattr(args, key) != getattr(defaults, key):
+            cli_args.add(key)
+    args._cli_args = cli_args
+    return args
 
 
-def apply_config(args, config: dict) -> None:
+def apply_config(args, config: dict, cli_args: set) -> None:
     """
     Apply YAML config values to args, without overriding CLI-provided values.
 
-    Config structure matches configs/mrpc_electra.yaml or configs/sst2_electra.yaml.
+    Args:
+        args: Parsed argparse namespace
+        config: YAML config dict
+        cli_args: Set of arg names explicitly provided on the command line
     """
+    def _set(attr, value):
+        """Set attr from config only if not explicitly provided on CLI."""
+        if attr not in cli_args:
+            setattr(args, attr, value)
+
     # Dataset config
     ds = config.get("dataset", {})
     if "name" in ds:
-        args.dataset = ds["name"]
-    if args.n_train is None and "n_train" in ds:
-        args.n_train = ds["n_train"]
-    if args.n_cal == 600 and "n_cal" in ds:
-        args.n_cal = ds["n_cal"]
-    if args.max_length == 128 and "max_length" in ds:
-        args.max_length = ds["max_length"]
+        _set("dataset", ds["name"])
+    if "n_train" in ds:
+        _set("n_train", ds["n_train"])
+    if "n_cal" in ds:
+        _set("n_cal", ds["n_cal"])
+    if "max_length" in ds:
+        _set("max_length", ds["max_length"])
 
     # Model config
     model = config.get("model", {})
-    if args.model_name == "google/electra-base-discriminator" and "name" in model:
-        args.model_name = model["name"]
-    if not args.use_spectral_norm and model.get("use_spectral_norm", False):
-        args.use_spectral_norm = True
+    if "name" in model:
+        _set("model_name", model["name"])
+    if "use_spectral_norm" in model:
+        _set("use_spectral_norm", model["use_spectral_norm"])
 
     # Training config
     train = config.get("training", {})
-    if args.learning_rate == 5e-5 and "learning_rate" in train:
-        args.learning_rate = train["learning_rate"]
-    if args.per_device_train_batch_size == 32 and "per_device_train_batch_size" in train:
-        args.per_device_train_batch_size = train["per_device_train_batch_size"]
-    if args.num_train_epochs == 12 and "num_train_epochs" in train:
-        args.num_train_epochs = train["num_train_epochs"]
-    if args.weight_decay == 0.1 and "weight_decay" in train:
-        args.weight_decay = train["weight_decay"]
-    if args.warmup_ratio == 0.1 and "warmup_ratio" in train:
-        args.warmup_ratio = train["warmup_ratio"]
-    if args.seed == 42 and "seed" in train:
-        args.seed = train["seed"]
+    if "learning_rate" in train:
+        _set("learning_rate", train["learning_rate"])
+    if "per_device_train_batch_size" in train:
+        _set("per_device_train_batch_size", train["per_device_train_batch_size"])
+    if "num_train_epochs" in train:
+        _set("num_train_epochs", train["num_train_epochs"])
+    if "weight_decay" in train:
+        _set("weight_decay", train["weight_decay"])
+    if "warmup_ratio" in train:
+        _set("warmup_ratio", train["warmup_ratio"])
+    if "seed" in train:
+        _set("seed", train["seed"])
 
     # Output config
     output = config.get("output", {})
-    if args.cache_dir == "cache/encoder" and "cache_dir" in output:
-        args.cache_dir = output["cache_dir"]
+    if "cache_dir" in output:
+        _set("cache_dir", output["cache_dir"])
+
+
+MODEL_SHORT_NAMES = {
+    "google/electra-base-discriminator": "electra",
+    "microsoft/deberta-v3-base": "deberta",
+    "google-bert/bert-base-uncased": "bert",
+}
 
 
 def get_variant_name(args) -> str:
     """Get a descriptive name for the model variant (includes dataset)."""
-    base = f"electra_{args.dataset}"
+    model_short = MODEL_SHORT_NAMES.get(args.model_name, args.model_name.split("/")[-1])
+    base = f"{model_short}_{args.dataset}"
     if args.use_spectral_norm:
         return f"{base}_sn"
     return base
@@ -173,7 +200,7 @@ def main():
     # Load config if provided
     if args.config:
         config = load_config(args.config)
-        apply_config(args, config)
+        apply_config(args, config, getattr(args, '_cli_args', set()))
 
     set_seed(args.seed)
 
@@ -221,9 +248,13 @@ def main():
     cal_dataset = data["cal_dataset"]
     test_dataset = data["test_dataset"]
 
+    # Override num_labels from dataset (handles multi-class like AG News)
+    args.num_labels = data["num_labels"]
+
     logger.info(f"Train: {data['n_train']} samples")
     logger.info(f"Cal: {data['n_cal']} samples")
     logger.info(f"Test: {data['n_test']} samples")
+    logger.info(f"Num labels: {args.num_labels}")
 
     # =========================================================================
     # Step 2: Fine-tune encoder (or load from checkpoint)
@@ -280,13 +311,13 @@ def main():
 
     # Predict on all splits
     logger.info("\nPredicting on training set...")
-    train_probs, train_preds, train_labels = classifier.predict(train_dataset)
+    train_probs, train_preds, train_labels, train_logits = classifier.predict(train_dataset)
 
     logger.info("\nPredicting on calibration set...")
-    cal_probs, cal_preds, cal_labels = classifier.predict(cal_dataset)
+    cal_probs, cal_preds, cal_labels, cal_logits = classifier.predict(cal_dataset)
 
     logger.info("\nPredicting on test set...")
-    test_probs, test_preds, test_labels = classifier.predict(test_dataset)
+    test_probs, test_preds, test_labels, test_logits = classifier.predict(test_dataset)
 
     # Report accuracy
     train_acc = (train_preds == train_labels).mean()
@@ -300,8 +331,9 @@ def main():
 
     # Compute F1 on test set
     from sklearn.metrics import f1_score, classification_report
-    test_f1 = f1_score(test_labels, test_preds)
-    logger.info(f"  Test F1: {test_f1:.4f}")
+    f1_avg = "binary" if args.num_labels == 2 else "weighted"
+    test_f1 = f1_score(test_labels, test_preds, average=f1_avg)
+    logger.info(f"  Test F1 ({f1_avg}): {test_f1:.4f}")
     logger.info(f"\nTest set classification report:")
     target_names = DATASET_LABELS.get(args.dataset)
     logger.info("\n" + classification_report(
@@ -385,11 +417,11 @@ def main():
     logger.info("Step 7: Saving cached outputs")
     logger.info("=" * 70)
 
-    # Save features + labels + probabilities + predictions for each split
-    for split_name, features, labels, probs, preds, md_scores in [
-        ("train", train_features, train_labels, train_probs, train_preds, train_md_scores),
-        ("cal", cal_features, cal_labels, cal_probs, cal_preds, cal_md_scores),
-        ("test", test_features, test_labels, test_probs, test_preds, test_md_scores),
+    # Save features + labels + probabilities + logits + predictions for each split
+    for split_name, features, labels, probs, logits, preds, md_scores in [
+        ("train", train_features, train_labels, train_probs, train_logits, train_preds, train_md_scores),
+        ("cal", cal_features, cal_labels, cal_probs, cal_logits, cal_preds, cal_md_scores),
+        ("test", test_features, test_labels, test_probs, test_logits, test_preds, test_md_scores),
     ]:
         npz_path = f"{cache_prefix}_{split_name}.npz"
         np.savez(
@@ -397,6 +429,7 @@ def main():
             features=features,
             labels=labels,
             probs=probs,
+            logits=logits,
             predictions=preds,
             md_scores=md_scores,
         )

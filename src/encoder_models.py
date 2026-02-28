@@ -84,9 +84,11 @@ def compute_classification_metrics(eval_pred: EvalPrediction) -> Dict[str, float
     labels = eval_pred.label_ids
     predictions = np.argmax(logits, axis=-1)
 
+    n_classes = logits.shape[-1]
+    f1_avg = "binary" if n_classes == 2 else "weighted"
     return {
         "accuracy": accuracy_score(labels, predictions),
-        "f1": f1_score(labels, predictions),
+        "f1": f1_score(labels, predictions, average=f1_avg),
     }
 
 
@@ -156,6 +158,7 @@ class EncoderClassifier:
         eval_strategy: str = "epoch",
         load_best_model_at_end: bool = True,
         metric_for_best_model: str = "f1",
+        callbacks: list = None,
         **extra_args,
     ) -> None:
         """
@@ -177,6 +180,7 @@ class EncoderClassifier:
             eval_strategy: When to evaluate ('epoch', 'steps', 'no')
             load_best_model_at_end: Load best checkpoint at end of training
             metric_for_best_model: Metric for best model selection
+            callbacks: List of HuggingFace Trainer callbacks (e.g. EarlyStoppingCallback)
             **extra_args: Additional TrainingArguments
         """
         logger.info("=" * 60)
@@ -220,6 +224,7 @@ class EncoderClassifier:
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
             compute_metrics=compute_classification_metrics,
+            callbacks=callbacks,
         )
 
         logger.info("Starting training...")
@@ -236,7 +241,7 @@ class EncoderClassifier:
             logger.info(f"  Val F1: {eval_results.get('eval_f1', 'N/A')}")
 
     @torch.no_grad()
-    def predict(self, dataset) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def predict(self, dataset) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Run inference on a dataset.
 
@@ -248,6 +253,7 @@ class EncoderClassifier:
                 probs: (N, num_labels) softmax probabilities
                 predictions: (N,) predicted class indices
                 labels: (N,) true labels
+                logits: (N, num_labels) raw logits (pre-softmax)
         """
         self.model.eval()
 
@@ -270,7 +276,7 @@ class EncoderClassifier:
         accuracy = (predictions == labels).mean()
         logger.info(f"Prediction accuracy: {accuracy:.4f} ({(predictions == labels).sum()}/{len(labels)})")
 
-        return probs, predictions, labels
+        return probs, predictions, labels, logits
 
     @torch.no_grad()
     def extract_features(
@@ -358,49 +364,64 @@ class EncoderClassifier:
         """
         Get the layer to hook for feature extraction.
 
-        For ELECTRA, this is the activation function (GELU) after the
-        dense layer in the classifier head. The output of this layer
-        is the penultimate representation before the final out_proj layer.
+        Returns the module whose output is the penultimate representation
+        (right before the final classification linear layer).
+
+        Supports three architectures:
+        - ELECTRA: classifier head has dense -> activation -> out_proj.
+          Hook on activation.
+        - BERT: bert.pooler (dense -> tanh) feeds into classifier (Linear).
+          Hook on pooler.activation.
+        - DeBERTa v3: pooler (ContextPooler: dense -> activation) feeds into
+          classifier (Linear). Hook on the pooler module itself (activation
+          is applied inline, not a separate sub-module).
 
         Returns:
             nn.Module to attach the forward hook to
         """
+        # Strategy 1: ELECTRA-style classifier head with dense + activation + out_proj
         classifier = self.model.classifier
-
-        # ELECTRA classifier structure:
-        #   ElectraClassificationHead:
-        #     (dense): Linear(768, 768)
-        #     (activation_fn): GELUActivation() [or similar]
-        #     (dropout): Dropout
-        #     (out_proj): Linear(768, num_labels)
-        #
-        # We want the output after activation_fn (after dense -> GELU).
-        # In HuggingFace transformers, the ELECTRA classifier head uses
-        # get_activation("gelu") which may be stored under different names
-        # depending on the transformers version.
-
-        # Try common attribute names for the activation function
-        for attr_name in ["activation_fn", "act_fn", "activation"]:
-            if hasattr(classifier, attr_name):
-                layer = getattr(classifier, attr_name)
-                logger.info(f"Feature extraction hook on: classifier.{attr_name} "
-                            f"({type(layer).__name__})")
-                return layer
-
-        # Fallback: hook on the dense layer itself
-        # The output of dense + GELU is what we want, but if we can only hook
-        # on dense, we get pre-GELU features. This is acceptable as a fallback
-        # since GELU is monotonic and approximately preserves distances.
-        if hasattr(classifier, "dense"):
-            logger.warning(
-                "Could not find activation function in classifier head. "
-                "Hooking on classifier.dense instead (pre-activation features)."
-            )
+        if hasattr(classifier, "dense") and hasattr(classifier, "out_proj"):
+            for attr_name in ["activation_fn", "act_fn", "activation"]:
+                if hasattr(classifier, attr_name):
+                    layer = getattr(classifier, attr_name)
+                    logger.info(f"Feature hook: classifier.{attr_name} "
+                                f"({type(layer).__name__}) [ELECTRA-style]")
+                    return layer
+            # Fallback to dense (pre-activation)
+            logger.warning("Hooking on classifier.dense (pre-activation fallback)")
             return classifier.dense
 
+        # Strategy 2: DeBERTa-style with top-level pooler (ContextPooler)
+        # ContextPooler applies activation inline in forward(), so we hook
+        # on the whole pooler module to capture its final output.
+        if hasattr(self.model, "pooler") and self.model.pooler is not None:
+            pooler = self.model.pooler
+            if hasattr(pooler, "dense"):
+                logger.info(f"Feature hook: model.pooler "
+                            f"({type(pooler).__name__}) [DeBERTa-style]")
+                return pooler
+
+        # Strategy 3: BERT-style with base_model.pooler (BertPooler)
+        # BertPooler has dense + activation (Tanh) as separate sub-modules.
+        for base_attr in ["bert", "roberta", "electra"]:
+            base_model = getattr(self.model, base_attr, None)
+            if base_model and hasattr(base_model, "pooler") and base_model.pooler is not None:
+                pooler = base_model.pooler
+                for attr_name in ["activation", "act_fn"]:
+                    if hasattr(pooler, attr_name):
+                        layer = getattr(pooler, attr_name)
+                        logger.info(f"Feature hook: {base_attr}.pooler.{attr_name} "
+                                    f"({type(layer).__name__}) [BERT-style]")
+                        return layer
+                # Fallback to pooler module itself
+                logger.info(f"Feature hook: {base_attr}.pooler "
+                            f"({type(pooler).__name__}) [BERT-style, module]")
+                return pooler
+
         raise AttributeError(
-            f"Cannot identify feature extraction layer in classifier head. "
-            f"Classifier attributes: {[a for a in dir(classifier) if not a.startswith('_')]}"
+            f"Cannot identify feature extraction layer for {self.model_name}. "
+            f"Top-level attributes: {[a for a in dir(self.model) if not a.startswith('_')]}"
         )
 
     def save(self, path: str) -> None:
@@ -430,10 +451,17 @@ class EncoderClassifier:
 
         self.model.save_pretrained(path)
 
-        # Re-apply spectral norm after saving (for continued use)
+        # Note: we do NOT re-apply spectral norm after saving.
+        # remove_spectral_norm already folded the final normalized weight
+        # into .weight, so the model is correct for inference (predict,
+        # extract_features).  Re-applying would create a fresh SN
+        # parametrization with random u/v vectors on top of the already-
+        # normalized weight, corrupting it.
         if sn_removed:
-            apply_spectral_norm_to_classifier(self.model)
-            logger.info("Re-applied spectral norm after saving")
+            logger.info(
+                "Spectral norm removed permanently after saving. "
+                "Model uses folded weights for inference."
+            )
 
         logger.info(f"Model saved to {path}")
 

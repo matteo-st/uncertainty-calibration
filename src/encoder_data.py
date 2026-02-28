@@ -1,14 +1,16 @@
 """
 Dataset loading for encoder-based classification experiments.
 
-Supports multiple GLUE tasks (MRPC, SST2) with train/cal/test splits.
+Supports GLUE tasks (MRPC, SST2, CoLA) and AG News with train/cal/test splits.
 Unlike data.py (prompt-based for decoder LMs), this module produces
 tokenized inputs for standard sequence classification.
 
 Usage:
     # Generic dispatcher (preferred)
     data = load_encoder_dataset("mrpc", n_cal=600)
-    data = load_encoder_dataset("sst2", n_train=60000, n_cal=600)
+    data = load_encoder_dataset("sst2", n_train=5735, n_cal=1000)
+    data = load_encoder_dataset("cola", n_cal=1000)
+    data = load_encoder_dataset("agnews", n_train=11000, n_cal=1000)
 
     # Backward-compatible wrapper
     data = load_mrpc(n_cal=600)
@@ -54,12 +56,16 @@ def load_encoder_dataset(
             - n_train, n_cal, n_test: Actual split sizes
             - num_labels: Number of classes
     """
-    if dataset_name == "mrpc":
-        return _load_mrpc(model_name, n_train, n_cal, max_length, seed)
-    elif dataset_name == "sst2":
-        return _load_sst2(model_name, n_train, n_cal, max_length, seed)
-    else:
-        raise ValueError(f"Unknown dataset: {dataset_name}. Supported: mrpc, sst2")
+    loaders = {
+        "mrpc": _load_mrpc,
+        "sst2": _load_sst2,
+        "cola": _load_cola,
+        "agnews": _load_agnews,
+    }
+    if dataset_name not in loaders:
+        raise ValueError(f"Unknown dataset: {dataset_name}. "
+                         f"Supported: {list(loaders.keys())}")
+    return loaders[dataset_name](model_name, n_train, n_cal, max_length, seed)
 
 
 def load_mrpc(
@@ -158,6 +164,90 @@ def _load_sst2(model_name, n_train, n_cal, max_length, seed) -> Dict:
     }
 
 
+def _load_cola(model_name, n_train, n_cal, max_length, seed) -> Dict:
+    """
+    Load CoLA dataset with train/cal/test splits.
+
+    CoLA is a single-sentence task (linguistic acceptability, 2 classes).
+    Train set: 8,551 samples. Test set: GLUE validation (1,043 samples).
+    """
+    logger.info("Loading CoLA dataset from GLUE...")
+    raw_datasets = load_dataset("glue", "cola")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    full_train = raw_datasets["train"]
+    test_dataset = raw_datasets["validation"]
+
+    def tokenize_fn(examples):
+        return tokenizer(
+            examples["sentence"],
+            padding="max_length",
+            max_length=max_length,
+            truncation=True,
+        )
+
+    train_dataset, cal_dataset = _split_train_cal(
+        full_train, n_train, n_cal, seed, dataset_name="CoLA"
+    )
+
+    train_dataset, cal_dataset, test_dataset = _finalize_splits(
+        train_dataset, cal_dataset, test_dataset, tokenize_fn
+    )
+
+    return {
+        "train_dataset": train_dataset,
+        "cal_dataset": cal_dataset,
+        "test_dataset": test_dataset,
+        "tokenizer": tokenizer,
+        "n_train": len(train_dataset),
+        "n_cal": len(cal_dataset),
+        "n_test": len(test_dataset),
+        "num_labels": 2,
+    }
+
+
+def _load_agnews(model_name, n_train, n_cal, max_length, seed) -> Dict:
+    """
+    Load AG News dataset with train/cal/test splits.
+
+    AG News is a single-sentence topic classification task (4 classes).
+    Train set: 120,000 samples. Test set: 7,600 samples (own test split).
+    """
+    logger.info("Loading AG News dataset...")
+    raw_datasets = load_dataset("ag_news")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    full_train = raw_datasets["train"]
+    test_dataset = raw_datasets["test"]
+
+    def tokenize_fn(examples):
+        return tokenizer(
+            examples["text"],
+            padding="max_length",
+            max_length=max_length,
+            truncation=True,
+        )
+
+    train_dataset, cal_dataset = _split_train_cal(
+        full_train, n_train, n_cal, seed, dataset_name="AG News"
+    )
+
+    train_dataset, cal_dataset, test_dataset = _finalize_splits(
+        train_dataset, cal_dataset, test_dataset, tokenize_fn
+    )
+
+    return {
+        "train_dataset": train_dataset,
+        "cal_dataset": cal_dataset,
+        "test_dataset": test_dataset,
+        "tokenizer": tokenizer,
+        "n_train": len(train_dataset),
+        "n_cal": len(cal_dataset),
+        "n_test": len(test_dataset),
+        "num_labels": 4,
+    }
+
+
 def _split_train_cal(full_train, n_train, n_cal, seed, dataset_name):
     """
     Split a full training set into train and calibration subsets.
@@ -240,11 +330,11 @@ def _finalize_splits(train_dataset, cal_dataset, test_dataset, tokenize_fn):
     for split_name, ds in [("train", train_dataset), ("cal", cal_dataset),
                            ("test", test_dataset)]:
         labels = np.array(ds["label"])
-        counts = np.bincount(labels, minlength=2)
-        logger.info(f"  {split_name} label distribution: "
-                    f"0={counts[0]} ({counts[0]/len(labels)*100:.1f}%), "
-                    f"1={counts[1]} ({counts[1]/len(labels)*100:.1f}%)")
+        counts = np.bincount(labels)
+        dist_parts = [f"{i}={c} ({c/len(labels)*100:.1f}%)"
+                      for i, c in enumerate(counts)]
+        logger.info(f"  {split_name} label distribution: {', '.join(dist_parts)}")
 
-    logger.info(f"Test set: {len(test_dataset)} samples (GLUE validation)")
+    logger.info(f"Test set: {len(test_dataset)} samples")
 
     return train_dataset, cal_dataset, test_dataset

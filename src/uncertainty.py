@@ -6,8 +6,9 @@ that can be used to predict whether the model's prediction is likely to be wrong
 """
 
 import numpy as np
+from scipy.special import logsumexp
 from typing import Dict, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -17,14 +18,20 @@ class UncertaintyScores:
     margin: np.ndarray                 # max(p) - second_max(p)
     doctor: np.ndarray                 # 1 - Gini(p)
     doctor_normalized: np.ndarray      # doctor normalized by max Gini
+    predictive_entropy: np.ndarray = field(default=None)  # -Σ p_k log(p_k)
+    energy: Optional[np.ndarray] = field(default=None)    # -log Σ exp(l_k), requires logits
 
     def to_dict(self) -> Dict[str, np.ndarray]:
-        return {
+        d = {
             "max_proba_complement": self.max_proba_complement,
             "margin": self.margin,
             "doctor": self.doctor,
             "doctor_normalized": self.doctor_normalized,
+            "predictive_entropy": self.predictive_entropy,
         }
+        if self.energy is not None:
+            d["energy"] = self.energy
+        return d
 
 
 def compute_max_proba_complement(probs: np.ndarray) -> np.ndarray:
@@ -129,21 +136,64 @@ def compute_doctor_normalized(probs: np.ndarray) -> np.ndarray:
     return gini / gini_max
 
 
-def compute_uncertainty_scores(probs: np.ndarray) -> UncertaintyScores:
+def compute_predictive_entropy(probs: np.ndarray) -> np.ndarray:
     """
-    Compute all uncertainty scores from class probabilities.
+    Compute predictive entropy: -Σ p_k log(p_k).
+
+    Higher values indicate higher uncertainty.
+    Bounded in [0, log(K)] where K is the number of classes.
 
     Args:
         probs: (N, K) array of class probabilities
 
     Returns:
+        (N,) array of entropy values
+    """
+    probs_clipped = np.clip(probs, 1e-10, 1.0)
+    return -np.sum(probs * np.log(probs_clipped), axis=1)
+
+
+def compute_energy(logits: np.ndarray) -> np.ndarray:
+    """
+    Compute energy score: -log Σ exp(l_k).
+
+    Higher values (closer to 0) indicate higher uncertainty.
+    Range: (-∞, 0).
+
+    Reference: Liu et al. (2020) "Energy-based Out-of-distribution Detection".
+
+    Args:
+        logits: (N, K) array of raw logits (pre-softmax)
+
+    Returns:
+        (N,) array of energy scores
+    """
+    return -logsumexp(logits, axis=1)
+
+
+def compute_uncertainty_scores(
+    probs: np.ndarray,
+    logits: Optional[np.ndarray] = None,
+) -> UncertaintyScores:
+    """
+    Compute all uncertainty scores from class probabilities and optionally logits.
+
+    Args:
+        probs: (N, K) array of class probabilities
+        logits: (N, K) array of raw logits, optional. Needed for energy score.
+
+    Returns:
         UncertaintyScores object with all scores
     """
+    energy = compute_energy(logits) if logits is not None else None
+
     return UncertaintyScores(
         max_proba_complement=compute_max_proba_complement(probs),
         margin=compute_margin(probs),
         doctor=compute_doctor(probs),
         doctor_normalized=compute_doctor_normalized(probs),
+        predictive_entropy=compute_predictive_entropy(probs),
+        energy=energy,
     )
 
 
@@ -170,7 +220,8 @@ def get_predictions_and_errors(
 def prepare_calibration_data(
     probs: np.ndarray,
     labels: np.ndarray,
-    score_name: str = "max_proba_complement"
+    score_name: str = "max_proba_complement",
+    logits: Optional[np.ndarray] = None,
 ) -> tuple:
     """
     Prepare data for uncertainty score calibration.
@@ -179,12 +230,13 @@ def prepare_calibration_data(
         probs: (N, K) array of class probabilities
         labels: (N,) array of true labels
         score_name: Which uncertainty score to use
+        logits: (N, K) array of raw logits, optional. Needed for energy score.
 
     Returns:
         scores: (N,) array of uncertainty scores
         errors: (N,) array of binary error indicators
     """
-    scores_obj = compute_uncertainty_scores(probs)
+    scores_obj = compute_uncertainty_scores(probs, logits=logits)
     scores_dict = scores_obj.to_dict()
 
     if score_name not in scores_dict:

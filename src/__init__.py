@@ -89,6 +89,7 @@ __all__ = [
     # Error Prediction Evaluation
     "compute_rocauc",
     "compute_ece",
+    "compute_ece_discrete",
     "compute_binary_cross_entropy",
     "compute_error_prediction_metrics",
 ]

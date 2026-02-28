@@ -1,0 +1,42 @@
+# DeBERTa-v3 on SST-2 (10% subsample) — ICML Paper
+#
+# SST-2: Binary sentiment, easy task, low-resource setting.
+# 10% of 67,349 = 6,735 available. n_cal=1000, n_train=5,735.
+#
+# Note: Vazhentsev 2022 uses DeBERTa v1, not v3. HPs are NOT transferred.
+# Training HPs: defaults from MS GitHub DeBERTa reference, pending Bayesian optimization.
+
+dataset:
+  name: sst2
+  n_train: 5735
+  n_cal: 1000
+  max_length: 128
+
+model:
+  name: microsoft/deberta-v3-base
+  use_spectral_norm: false
+
+training:
+  # Defaults pending Bayesian optimization (~20 trials with Optuna TPE)
+  learning_rate: 2.0e-5
+  per_device_train_batch_size: 32
+  num_train_epochs: 6
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  seed: 42
+
+uncertainty:
+  scores:
+    - max_proba_complement
+    - predictive_entropy
+    - doctor
+    - energy
+    - mahalanobis_distance
+
+score_calibration:
+  methods:
+    - none
+    - uniform_mass
+
+output:
+  cache_dir: cache/paper
