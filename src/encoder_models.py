@@ -129,9 +129,13 @@ class EncoderClassifier:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         logger.info(f"Loading model: {model_name}")
+        # DeBERTa-v3 weights are stored as fp16 on HuggingFace Hub.
+        # Loading in fp16 without a loss scaler causes NaN gradients,
+        # so we force fp32 for models distributed in half precision.
         self.model = AutoModelForSequenceClassification.from_pretrained(
             model_name,
             num_labels=num_labels,
+            torch_dtype=torch.float32,
         )
 
         if use_spectral_norm:
@@ -499,6 +503,7 @@ class EncoderClassifier:
         instance.model = AutoModelForSequenceClassification.from_pretrained(
             path,
             num_labels=num_labels,
+            torch_dtype=torch.float32,
         )
 
         if use_spectral_norm:
