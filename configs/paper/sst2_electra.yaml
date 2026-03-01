@@ -16,11 +16,11 @@ model:
   use_spectral_norm: false
 
 training:
-  # Defaults pending Bayesian optimization (~20 trials with Optuna TPE)
-  learning_rate: 1.0e-5
+  # Best HPs from Bayesian optimization (Optuna TPE, 20 trials, val_acc=0.942)
+  learning_rate: 2.3295e-5
   per_device_train_batch_size: 64
-  num_train_epochs: 15
-  weight_decay: 0.1
+  num_train_epochs: 12
+  weight_decay: 0.0753
   warmup_ratio: 0.1
   seed: 42
 
