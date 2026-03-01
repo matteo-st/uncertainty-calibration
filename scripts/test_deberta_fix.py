@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Quick diagnostic: fine-tune DeBERTa-v3-base on SST-2 with paper HPs
+Quick diagnostic: fine-tune DeBERTa-v3-base on MRPC with paper HPs
 to verify that adam_beta2=0.98 fix works.
 
-Expected: ~93-94% val accuracy (vs ~85% without the fix).
+MRPC is small (~2.7k train) so this finishes in a few minutes.
+Expected: ~0.87-0.88 accuracy (vs ~0.83 without the fix).
 """
 
 import sys
@@ -19,9 +20,9 @@ from src.utils import set_seed, setup_logging
 logger = setup_logging()
 set_seed(42)
 
-# Load SST-2 with DeBERTa tokenizer
-logger.info("Loading SST-2 dataset...")
-data = load_encoder_dataset("sst2", "microsoft/deberta-v3-base", n_cal=1000, seed=42)
+# Load MRPC with DeBERTa tokenizer
+logger.info("Loading MRPC dataset...")
+data = load_encoder_dataset("mrpc", "microsoft/deberta-v3-base", n_cal=1000, seed=42)
 
 # HP split (same as hp_search.py)
 n = len(data["train_dataset"])
@@ -32,7 +33,7 @@ hp_train = data["train_dataset"].select(indices[: n - n_val])
 hp_val = data["train_dataset"].select(indices[n - n_val :])
 logger.info(f"hp_train={len(hp_train)}, hp_val={len(hp_val)}")
 
-# Fine-tune with DeBERTa paper HPs
+# Fine-tune with DeBERTa paper HPs (He et al., ICLR 2023)
 classifier = EncoderClassifier(
     model_name="microsoft/deberta-v3-base",
     num_labels=data["num_labels"],
@@ -43,7 +44,7 @@ classifier.finetune(
     val_dataset=hp_val,
     output_dir="/tmp/deberta_diag",
     learning_rate=2e-5,
-    per_device_train_batch_size=32,
+    per_device_train_batch_size=16,
     num_train_epochs=6,
     weight_decay=0.01,
     warmup_ratio=0.1,
@@ -59,6 +60,6 @@ probs, preds, labels, _ = classifier.predict(hp_val)
 val_accuracy = float((preds == labels).mean())
 logger.info(f"\n{'='*60}")
 logger.info(f"DIAGNOSTIC RESULT: val_accuracy={val_accuracy:.4f}")
-logger.info(f"Expected: ~0.93-0.94 (with fix)")
-logger.info(f"Before fix: ~0.85")
+logger.info(f"Expected: ~0.87-0.88 (with adam_beta2=0.98 fix)")
+logger.info(f"Before fix: ~0.83")
 logger.info(f"{'='*60}")
