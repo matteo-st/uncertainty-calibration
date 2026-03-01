@@ -28,11 +28,21 @@ logger = logging.getLogger(__name__)
 # conversion path in transformers >=5.x (tiktoken parsing error).
 _SLOW_TOKENIZER_MODELS = {"microsoft/deberta-v3-base"}
 
+# Transformers 5.x regression: DebertaV2Tokenizer no longer adds [CLS]/[SEP]
+# special tokens by default (build_inputs_with_special_tokens is missing).
+# Without these, the model classifies from the first content token instead
+# of the CLS embedding, causing ~5-12% accuracy drops across all tasks.
+_MISSING_SPECIAL_TOKENS_MODELS = {"microsoft/deberta-v3-base"}
+
 
 def _load_tokenizer(model_name: str):
-    """Load tokenizer, falling back to slow tokenizer for known-broken models."""
+    """Load tokenizer, with fixes for DeBERTa-v3 on transformers 5.x."""
     use_fast = model_name not in _SLOW_TOKENIZER_MODELS
-    return AutoTokenizer.from_pretrained(model_name, use_fast=use_fast)
+    kwargs = {}
+    if model_name in _MISSING_SPECIAL_TOKENS_MODELS:
+        kwargs["add_bos_token"] = True
+        kwargs["add_eos_token"] = True
+    return AutoTokenizer.from_pretrained(model_name, use_fast=use_fast, **kwargs)
 
 
 def load_encoder_dataset(

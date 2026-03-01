@@ -188,12 +188,6 @@ class EncoderClassifier:
             callbacks: List of HuggingFace Trainer callbacks (e.g. EarlyStoppingCallback)
             **extra_args: Additional TrainingArguments
         """
-        # DeBERTa-v3 requires adam_beta2=0.98 (He et al., ICLR 2023, Table 11).
-        # The default 0.999 causes poor convergence due to the disentangled
-        # attention mechanism's different gradient landscape.
-        _DEBERTA_MODELS = {"microsoft/deberta-v3-base"}
-        adam_beta2 = 0.98 if self.model_name in _DEBERTA_MODELS else 0.999
-
         logger.info("=" * 60)
         logger.info("Fine-tuning encoder model")
         logger.info("=" * 60)
@@ -203,7 +197,6 @@ class EncoderClassifier:
         logger.info(f"  Epochs: {num_train_epochs}")
         logger.info(f"  Weight decay: {weight_decay}")
         logger.info(f"  Warmup ratio: {warmup_ratio}")
-        logger.info(f"  Adam beta2: {adam_beta2}")
         logger.info(f"  Spectral norm: {self.use_spectral_norm}")
 
         # If no val_dataset, disable evaluation during training
@@ -219,7 +212,6 @@ class EncoderClassifier:
             num_train_epochs=num_train_epochs,
             weight_decay=weight_decay,
             warmup_ratio=warmup_ratio,
-            adam_beta2=adam_beta2,
             seed=seed,
             logging_steps=logging_steps,
             save_strategy=save_strategy,
