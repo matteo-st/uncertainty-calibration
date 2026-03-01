@@ -24,6 +24,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# DeBERTa-v3 SentencePiece tokenizer breaks with the fast tokenizer
+# conversion path in transformers >=5.x (tiktoken parsing error).
+_SLOW_TOKENIZER_MODELS = {"microsoft/deberta-v3-base"}
+
+
+def _load_tokenizer(model_name: str):
+    """Load tokenizer, falling back to slow tokenizer for known-broken models."""
+    use_fast = model_name not in _SLOW_TOKENIZER_MODELS
+    return AutoTokenizer.from_pretrained(model_name, use_fast=use_fast)
+
 
 def load_encoder_dataset(
     dataset_name: str,
@@ -88,7 +98,7 @@ def _load_mrpc(model_name, n_train, n_cal, max_length, seed) -> Dict:
     """
     logger.info("Loading MRPC dataset from GLUE...")
     raw_datasets = load_dataset("glue", "mrpc")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = _load_tokenizer(model_name)
 
     full_train = raw_datasets["train"]
     test_dataset = raw_datasets["validation"]
@@ -131,7 +141,7 @@ def _load_sst2(model_name, n_train, n_cal, max_length, seed) -> Dict:
     """
     logger.info("Loading SST2 dataset from GLUE...")
     raw_datasets = load_dataset("glue", "sst2")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = _load_tokenizer(model_name)
 
     full_train = raw_datasets["train"]
     test_dataset = raw_datasets["validation"]
@@ -173,7 +183,7 @@ def _load_cola(model_name, n_train, n_cal, max_length, seed) -> Dict:
     """
     logger.info("Loading CoLA dataset from GLUE...")
     raw_datasets = load_dataset("glue", "cola")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = _load_tokenizer(model_name)
 
     full_train = raw_datasets["train"]
     test_dataset = raw_datasets["validation"]
@@ -215,7 +225,7 @@ def _load_agnews(model_name, n_train, n_cal, max_length, seed) -> Dict:
     """
     logger.info("Loading AG News dataset...")
     raw_datasets = load_dataset("ag_news")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = _load_tokenizer(model_name)
 
     full_train = raw_datasets["train"]
     test_dataset = raw_datasets["test"]
