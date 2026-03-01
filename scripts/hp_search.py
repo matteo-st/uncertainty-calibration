@@ -104,6 +104,23 @@ def split_hp_train_val(train_dataset, val_ratio: float, seed: int):
     return hp_train, hp_val
 
 
+    # DeBERTa-v3 is more sensitive to HPs than BERT/ELECTRA (He et al., ICLR 2023,
+# Table 11). Narrower ranges avoid wasted trials that collapse to random accuracy.
+_MODEL_SEARCH_SPACES = {
+    "microsoft/deberta-v3-base": {
+        "lr": (1e-5, 5e-5),
+        "batch_sizes": [16, 32, 64],
+        "wd": (0.0, 0.05),
+    },
+}
+
+_DEFAULT_SEARCH_SPACE = {
+    "lr": (5e-6, 1e-4),
+    "batch_sizes": [4, 16, 32, 64],
+    "wd": (0.0, 0.1),
+}
+
+
 def make_objective(config, hp_train, hp_val, patience, seed, output_dir, logger):
     """Return the Optuna objective function (closure over data)."""
     model_cfg = config.get("model", {})
@@ -111,14 +128,17 @@ def make_objective(config, hp_train, hp_val, patience, seed, output_dir, logger)
     num_labels = config.get("_num_labels", 2)
     use_spectral_norm = model_cfg.get("use_spectral_norm", False)
 
+    space = _MODEL_SEARCH_SPACES.get(model_name, _DEFAULT_SEARCH_SPACE)
+    logger.info(f"Search space for {model_name}: {space}")
+
     def objective(trial: optuna.Trial) -> float:
         # ---- Suggest hyperparameters ----
-        lr = trial.suggest_float("learning_rate", 5e-6, 1e-4, log=True)
+        lr = trial.suggest_float("learning_rate", space["lr"][0], space["lr"][1], log=True)
         epochs = trial.suggest_int("num_train_epochs", 3, 15)
         batch_size = trial.suggest_categorical(
-            "per_device_train_batch_size", [4, 16, 32, 64]
+            "per_device_train_batch_size", space["batch_sizes"]
         )
-        wd = trial.suggest_float("weight_decay", 0.0, 0.1)
+        wd = trial.suggest_float("weight_decay", space["wd"][0], space["wd"][1])
 
         logger.info(f"\n{'='*60}")
         logger.info(f"Trial {trial.number}: lr={lr:.2e}, epochs={epochs}, "
