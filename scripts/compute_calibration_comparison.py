@@ -78,12 +78,20 @@ def load_split(prefix, split):
 
 
 # --- General Platt Scaling (works on any real-valued scores) ---
+# Standardizes scores first to handle unbounded scores (Energy, MD).
+# Fits: P(error | score) = sigmoid(a * z + b) where z = (score - mu) / sigma.
 
 def fit_platt_general(cal_scores, cal_errors):
-    """Fit P(error|score) = sigmoid(a * score + b) by minimizing BCE."""
+    """Fit Platt scaling with score standardization for numerical stability."""
+    mu = cal_scores.mean()
+    sigma = cal_scores.std()
+    if sigma < 1e-12:
+        sigma = 1.0
+    z_cal = (cal_scores - mu) / sigma
+
     def neg_log_likelihood(params):
         a, b = params
-        logits = a * cal_scores + b
+        logits = a * z_cal + b
         probs = expit(logits)
         eps = 1e-10
         probs = np.clip(probs, eps, 1 - eps)
@@ -91,27 +99,33 @@ def fit_platt_general(cal_scores, cal_errors):
             cal_errors * np.log(probs) + (1 - cal_errors) * np.log(1 - probs)
         )
 
-    # Initialize: a=1, b chosen so mean prediction ≈ mean error rate
     mean_err = cal_errors.mean()
-    b_init = np.log(mean_err / (1 - mean_err + 1e-10)) - cal_scores.mean()
-    result = minimize(neg_log_likelihood, [1.0, b_init], method="Nelder-Mead",
-                      options={"maxiter": 5000, "xatol": 1e-8, "fatol": 1e-10})
+    b_init = np.log(mean_err / (1 - mean_err + 1e-10))
+    result = minimize(neg_log_likelihood, [1.0, b_init], method="L-BFGS-B",
+                      options={"maxiter": 5000})
     a, b = result.x
-    return a, b
+    return a, b, mu, sigma
 
 
-def calibrate_platt_general(scores, a, b):
-    """Apply general Platt scaling."""
-    return expit(a * scores + b)
+def calibrate_platt_general(scores, a, b, mu, sigma):
+    """Apply general Platt scaling with standardization."""
+    z = (scores - mu) / sigma
+    return expit(a * z + b)
 
 
 # --- Temperature Scaling (a only, no bias) ---
 
 def fit_temp_general(cal_scores, cal_errors):
-    """Fit P(error|score) = sigmoid(a * score) by minimizing BCE."""
+    """Fit temperature scaling with score standardization."""
+    mu = cal_scores.mean()
+    sigma = cal_scores.std()
+    if sigma < 1e-12:
+        sigma = 1.0
+    z_cal = (cal_scores - mu) / sigma
+
     def neg_log_likelihood(params):
         a = params[0]
-        logits = a * cal_scores
+        logits = a * z_cal
         probs = expit(logits)
         eps = 1e-10
         probs = np.clip(probs, eps, 1 - eps)
@@ -119,14 +133,15 @@ def fit_temp_general(cal_scores, cal_errors):
             cal_errors * np.log(probs) + (1 - cal_errors) * np.log(1 - probs)
         )
 
-    result = minimize(neg_log_likelihood, [1.0], method="Nelder-Mead",
+    result = minimize(neg_log_likelihood, [1.0], method="L-BFGS-B",
                       options={"maxiter": 5000})
-    return result.x[0]
+    return result.x[0], mu, sigma
 
 
-def calibrate_temp_general(scores, a):
-    """Apply temperature scaling."""
-    return expit(a * scores)
+def calibrate_temp_general(scores, a, mu, sigma):
+    """Apply temperature scaling with standardization."""
+    z = (scores - mu) / sigma
+    return expit(a * z)
 
 
 # --- Metrics computation ---
@@ -182,14 +197,15 @@ def process_experiment(cache_prefix, score_defs):
         score_results["um"]["n_bins"] = len(um.bin_error_rates)
 
         # --- Platt Scaling (general) ---
-        a, b = fit_platt_general(cal_scores, cal_errors)
-        test_platt = calibrate_platt_general(test_scores, a, b)
+        a, b, mu, sigma = fit_platt_general(cal_scores, cal_errors)
+        test_platt = calibrate_platt_general(test_scores, a, b, mu, sigma)
         score_results["platt"] = compute_metrics_for_method(test_platt, test_errors, discrete=False)
-        score_results["platt"]["params"] = {"a": float(a), "b": float(b)}
+        score_results["platt"]["params"] = {"a": float(a), "b": float(b),
+                                            "mu": float(mu), "sigma": float(sigma)}
 
         # --- Temperature Scaling (general, no bias) ---
-        a_temp = fit_temp_general(cal_scores, cal_errors)
-        test_temp = calibrate_temp_general(test_scores, a_temp)
+        a_temp, mu_t, sigma_t = fit_temp_general(cal_scores, cal_errors)
+        test_temp = calibrate_temp_general(test_scores, a_temp, mu_t, sigma_t)
         score_results["temp"] = compute_metrics_for_method(test_temp, test_errors, discrete=False)
         score_results["temp"]["params"] = {"a": float(a_temp)}
 
