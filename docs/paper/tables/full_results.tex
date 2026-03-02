@@ -1,0 +1,86 @@
+% Full results table for appendix: all 5 scores, all 12 (dataset, model) pairs
+% Mean ± std over 3 seeds
+\begin{table*}[t]
+\centering
+\caption{Full results for all uncertainty scores before and after uniform-mass (UM) calibration. SP, PE, and Doctor are equivalent up to monotone transforms for binary tasks ($K=2$), confirmed by near-identical ROCAUC values across MRPC, SST-2, and CoLA. Results are mean $\pm$ std over 3 seeds.}
+\label{tab:full_results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+\textbf{Dataset} & \textbf{Model} & \textbf{Score} & \textbf{ROCAUC} & \textbf{ROCAUC\textsuperscript{UM}} & \textbf{ECE\textsuperscript{UM}} & \textbf{MCE\textsuperscript{UM}} \\
+\midrule
+MRPC & ELECTRA & SP & .807{\scriptsize$\pm$.038} & .813{\scriptsize$\pm$.024} & .054{\scriptsize$\pm$.003} & .243{\scriptsize$\pm$.025} \\
+ &  & PE & .807{\scriptsize$\pm$.038} & .816{\scriptsize$\pm$.028} & .055{\scriptsize$\pm$.005} & .227{\scriptsize$\pm$.036} \\
+ &  & Doctor & .807{\scriptsize$\pm$.038} & .813{\scriptsize$\pm$.024} & .054{\scriptsize$\pm$.003} & .243{\scriptsize$\pm$.025} \\
+ &  & Energy & .791{\scriptsize$\pm$.046} & .803{\scriptsize$\pm$.031} & .043{\scriptsize$\pm$.004} & .212{\scriptsize$\pm$.021} \\
+ &  & MD & .832{\scriptsize$\pm$.018} & .818{\scriptsize$\pm$.021} & .047{\scriptsize$\pm$.003} & .193{\scriptsize$\pm$.031} \\
+\cmidrule(l){2-7}
+ & BERT & SP & .747{\scriptsize$\pm$.038} & .739{\scriptsize$\pm$.034} & .061{\scriptsize$\pm$.008} & .241{\scriptsize$\pm$.027} \\
+ &  & PE & .747{\scriptsize$\pm$.037} & .721{\scriptsize$\pm$.032} & .069{\scriptsize$\pm$.013} & .236{\scriptsize$\pm$.031} \\
+ &  & Doctor & .747{\scriptsize$\pm$.038} & .739{\scriptsize$\pm$.034} & .061{\scriptsize$\pm$.008} & .241{\scriptsize$\pm$.027} \\
+ &  & Energy & .737{\scriptsize$\pm$.027} & .727{\scriptsize$\pm$.022} & .066{\scriptsize$\pm$.007} & .205{\scriptsize$\pm$.029} \\
+ &  & MD & .747{\scriptsize$\pm$.023} & .732{\scriptsize$\pm$.031} & .068{\scriptsize$\pm$.002} & .294{\scriptsize$\pm$.023} \\
+\cmidrule(l){2-7}
+ & DeBERTa & SP & .786{\scriptsize$\pm$.010} & .790{\scriptsize$\pm$.011} & .042{\scriptsize$\pm$.005} & .148{\scriptsize$\pm$.052} \\
+ &  & PE & .786{\scriptsize$\pm$.010} & .790{\scriptsize$\pm$.011} & .040{\scriptsize$\pm$.002} & .148{\scriptsize$\pm$.052} \\
+ &  & Doctor & .786{\scriptsize$\pm$.010} & .790{\scriptsize$\pm$.011} & .042{\scriptsize$\pm$.005} & .148{\scriptsize$\pm$.052} \\
+ &  & Energy & .781{\scriptsize$\pm$.012} & .792{\scriptsize$\pm$.013} & .036{\scriptsize$\pm$.002} & .133{\scriptsize$\pm$.017} \\
+ &  & MD & .801{\scriptsize$\pm$.005} & .791{\scriptsize$\pm$.005} & .044{\scriptsize$\pm$.007} & .191{\scriptsize$\pm$.066} \\
+\midrule
+SST-2 & ELECTRA & SP & .787{\scriptsize$\pm$.023} & .753{\scriptsize$\pm$.017} & .024{\scriptsize$\pm$.004} & .121{\scriptsize$\pm$.041} \\
+ &  & PE & .787{\scriptsize$\pm$.023} & .753{\scriptsize$\pm$.017} & .024{\scriptsize$\pm$.004} & .110{\scriptsize$\pm$.049} \\
+ &  & Doctor & .787{\scriptsize$\pm$.023} & .753{\scriptsize$\pm$.017} & .024{\scriptsize$\pm$.004} & .121{\scriptsize$\pm$.041} \\
+ &  & Energy & .766{\scriptsize$\pm$.018} & .759{\scriptsize$\pm$.026} & .025{\scriptsize$\pm$.005} & .148{\scriptsize$\pm$.020} \\
+ &  & MD & .857{\scriptsize$\pm$.014} & .816{\scriptsize$\pm$.024} & .024{\scriptsize$\pm$.004} & .142{\scriptsize$\pm$.049} \\
+\cmidrule(l){2-7}
+ & BERT & SP & .824{\scriptsize$\pm$.017} & .799{\scriptsize$\pm$.022} & .034{\scriptsize$\pm$.007} & .140{\scriptsize$\pm$.056} \\
+ &  & PE & .824{\scriptsize$\pm$.017} & .799{\scriptsize$\pm$.021} & .035{\scriptsize$\pm$.009} & .140{\scriptsize$\pm$.056} \\
+ &  & Doctor & .824{\scriptsize$\pm$.017} & .799{\scriptsize$\pm$.022} & .034{\scriptsize$\pm$.007} & .140{\scriptsize$\pm$.056} \\
+ &  & Energy & .805{\scriptsize$\pm$.022} & .796{\scriptsize$\pm$.006} & .032{\scriptsize$\pm$.005} & .108{\scriptsize$\pm$.023} \\
+ &  & MD & .848{\scriptsize$\pm$.011} & .828{\scriptsize$\pm$.002} & .033{\scriptsize$\pm$.002} & .142{\scriptsize$\pm$.031} \\
+\cmidrule(l){2-7}
+ & DeBERTa & SP & .821{\scriptsize$\pm$.017} & .791{\scriptsize$\pm$.035} & .023{\scriptsize$\pm$.004} & .134{\scriptsize$\pm$.070} \\
+ &  & PE & .821{\scriptsize$\pm$.017} & .791{\scriptsize$\pm$.035} & .023{\scriptsize$\pm$.003} & .134{\scriptsize$\pm$.070} \\
+ &  & Doctor & .821{\scriptsize$\pm$.017} & .791{\scriptsize$\pm$.035} & .023{\scriptsize$\pm$.004} & .134{\scriptsize$\pm$.070} \\
+ &  & Energy & .815{\scriptsize$\pm$.028} & .795{\scriptsize$\pm$.024} & .023{\scriptsize$\pm$.001} & .138{\scriptsize$\pm$.051} \\
+ &  & MD & .854{\scriptsize$\pm$.011} & .835{\scriptsize$\pm$.018} & .018{\scriptsize$\pm$.006} & .090{\scriptsize$\pm$.064} \\
+\midrule
+CoLA & ELECTRA & SP & .750{\scriptsize$\pm$.037} & .736{\scriptsize$\pm$.036} & .053{\scriptsize$\pm$.003} & .162{\scriptsize$\pm$.036} \\
+ &  & PE & .750{\scriptsize$\pm$.037} & .735{\scriptsize$\pm$.037} & .053{\scriptsize$\pm$.004} & .162{\scriptsize$\pm$.036} \\
+ &  & Doctor & .750{\scriptsize$\pm$.037} & .736{\scriptsize$\pm$.036} & .053{\scriptsize$\pm$.003} & .162{\scriptsize$\pm$.036} \\
+ &  & Energy & .748{\scriptsize$\pm$.039} & .732{\scriptsize$\pm$.043} & .045{\scriptsize$\pm$.003} & .170{\scriptsize$\pm$.055} \\
+ &  & MD & .825{\scriptsize$\pm$.013} & .800{\scriptsize$\pm$.021} & .040{\scriptsize$\pm$.003} & .229{\scriptsize$\pm$.070} \\
+\cmidrule(l){2-7}
+ & BERT & SP & .730{\scriptsize$\pm$.024} & .699{\scriptsize$\pm$.020} & .050{\scriptsize$\pm$.007} & .115{\scriptsize$\pm$.017} \\
+ &  & PE & .730{\scriptsize$\pm$.024} & .697{\scriptsize$\pm$.019} & .051{\scriptsize$\pm$.007} & .115{\scriptsize$\pm$.017} \\
+ &  & Doctor & .730{\scriptsize$\pm$.024} & .699{\scriptsize$\pm$.020} & .050{\scriptsize$\pm$.007} & .115{\scriptsize$\pm$.017} \\
+ &  & Energy & .721{\scriptsize$\pm$.021} & .695{\scriptsize$\pm$.016} & .048{\scriptsize$\pm$.003} & .172{\scriptsize$\pm$.010} \\
+ &  & MD & .768{\scriptsize$\pm$.024} & .747{\scriptsize$\pm$.027} & .060{\scriptsize$\pm$.006} & .172{\scriptsize$\pm$.023} \\
+\cmidrule(l){2-7}
+ & DeBERTa & SP & .798{\scriptsize$\pm$.018} & .782{\scriptsize$\pm$.020} & .046{\scriptsize$\pm$.015} & .123{\scriptsize$\pm$.057} \\
+ &  & PE & .798{\scriptsize$\pm$.018} & .783{\scriptsize$\pm$.019} & .046{\scriptsize$\pm$.015} & .123{\scriptsize$\pm$.058} \\
+ &  & Doctor & .798{\scriptsize$\pm$.018} & .782{\scriptsize$\pm$.020} & .046{\scriptsize$\pm$.015} & .123{\scriptsize$\pm$.057} \\
+ &  & Energy & .779{\scriptsize$\pm$.014} & .789{\scriptsize$\pm$.009} & .042{\scriptsize$\pm$.007} & .127{\scriptsize$\pm$.044} \\
+ &  & MD & .798{\scriptsize$\pm$.013} & .769{\scriptsize$\pm$.018} & .047{\scriptsize$\pm$.007} & .132{\scriptsize$\pm$.023} \\
+\midrule
+AG News & ELECTRA & SP & .801{\scriptsize$\pm$.027} & .787{\scriptsize$\pm$.036} & .027{\scriptsize$\pm$.011} & .085{\scriptsize$\pm$.025} \\
+ &  & PE & .800{\scriptsize$\pm$.028} & .790{\scriptsize$\pm$.029} & .025{\scriptsize$\pm$.008} & .086{\scriptsize$\pm$.026} \\
+ &  & Doctor & .801{\scriptsize$\pm$.027} & .787{\scriptsize$\pm$.036} & .027{\scriptsize$\pm$.011} & .085{\scriptsize$\pm$.025} \\
+ &  & Energy & .783{\scriptsize$\pm$.053} & .778{\scriptsize$\pm$.055} & .028{\scriptsize$\pm$.007} & .098{\scriptsize$\pm$.013} \\
+ &  & MD & .832{\scriptsize$\pm$.008} & .807{\scriptsize$\pm$.007} & .028{\scriptsize$\pm$.004} & .120{\scriptsize$\pm$.028} \\
+\cmidrule(l){2-7}
+ & BERT & SP & .847{\scriptsize$\pm$.013} & .832{\scriptsize$\pm$.014} & .020{\scriptsize$\pm$.007} & .086{\scriptsize$\pm$.024} \\
+ &  & PE & .847{\scriptsize$\pm$.013} & .835{\scriptsize$\pm$.013} & .018{\scriptsize$\pm$.004} & .086{\scriptsize$\pm$.012} \\
+ &  & Doctor & .847{\scriptsize$\pm$.013} & .832{\scriptsize$\pm$.014} & .020{\scriptsize$\pm$.007} & .086{\scriptsize$\pm$.024} \\
+ &  & Energy & .827{\scriptsize$\pm$.019} & .814{\scriptsize$\pm$.014} & .020{\scriptsize$\pm$.004} & .074{\scriptsize$\pm$.043} \\
+ &  & MD & .846{\scriptsize$\pm$.003} & .833{\scriptsize$\pm$.003} & .020{\scriptsize$\pm$.002} & .092{\scriptsize$\pm$.017} \\
+\cmidrule(l){2-7}
+ & DeBERTa & SP & .805{\scriptsize$\pm$.012} & .777{\scriptsize$\pm$.025} & .023{\scriptsize$\pm$.006} & .083{\scriptsize$\pm$.022} \\
+ &  & PE & .805{\scriptsize$\pm$.012} & .776{\scriptsize$\pm$.028} & .022{\scriptsize$\pm$.007} & .087{\scriptsize$\pm$.025} \\
+ &  & Doctor & .805{\scriptsize$\pm$.012} & .777{\scriptsize$\pm$.025} & .024{\scriptsize$\pm$.005} & .083{\scriptsize$\pm$.022} \\
+ &  & Energy & .776{\scriptsize$\pm$.020} & .771{\scriptsize$\pm$.046} & .023{\scriptsize$\pm$.002} & .083{\scriptsize$\pm$.021} \\
+ &  & MD & .839{\scriptsize$\pm$.006} & .825{\scriptsize$\pm$.011} & .017{\scriptsize$\pm$.003} & .062{\scriptsize$\pm$.016} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

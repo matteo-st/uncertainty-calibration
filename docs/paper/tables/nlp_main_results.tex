@@ -1,0 +1,34 @@
+% Main NLP results: ROCAUC and ECE for SP, Energy, MD (mean ± std over 3 seeds)
+\begin{table*}[t]
+\centering
+\caption{Error-detection performance before and after uniform-mass (UM) calibration on text classification benchmarks.
+ROCAUC ($\uparrow$) measures discrimination; ECE ($\downarrow$) measures calibration error after UM calibration.
+Raw Energy and MD scores are unbounded, so ECE is only meaningful after calibration.
+Results are mean $\pm$ std over 3 seeds. Best raw ROCAUC per (dataset, model) is in \textbf{bold}.}
+\label{tab:main_results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}ll ccc ccc ccc@{}}
+\toprule
+& & \multicolumn{3}{c}{\textbf{SP}} & \multicolumn{3}{c}{\textbf{Energy}} & \multicolumn{3}{c}{\textbf{MD}} \\
+\cmidrule(lr){3-5} \cmidrule(lr){6-8} \cmidrule(lr){9-11}
+\textbf{Dataset} & \textbf{Model} & ROCAUC & ROCAUC\textsuperscript{UM} & ECE\textsuperscript{UM} & ROCAUC & ROCAUC\textsuperscript{UM} & ECE\textsuperscript{UM} & ROCAUC & ROCAUC\textsuperscript{UM} & ECE\textsuperscript{UM} \\
+\midrule
+MRPC & ELECTRA & .807{\scriptsize$\pm$.038} & .813{\scriptsize$\pm$.024} & .054{\scriptsize$\pm$.003} & .791{\scriptsize$\pm$.046} & .803{\scriptsize$\pm$.031} & .043{\scriptsize$\pm$.004} & \textbf{.832}{\scriptsize$\pm$.018} & .818{\scriptsize$\pm$.021} & .047{\scriptsize$\pm$.003} \\
+     & BERT    & .747{\scriptsize$\pm$.038} & .739{\scriptsize$\pm$.034} & .061{\scriptsize$\pm$.008} & .737{\scriptsize$\pm$.027} & .727{\scriptsize$\pm$.022} & .066{\scriptsize$\pm$.007} & \textbf{.747}{\scriptsize$\pm$.023} & .732{\scriptsize$\pm$.031} & .068{\scriptsize$\pm$.002} \\
+     & DeBERTa & .786{\scriptsize$\pm$.010} & .790{\scriptsize$\pm$.011} & .042{\scriptsize$\pm$.005} & .781{\scriptsize$\pm$.012} & .792{\scriptsize$\pm$.013} & .036{\scriptsize$\pm$.002} & \textbf{.801}{\scriptsize$\pm$.005} & .791{\scriptsize$\pm$.005} & .044{\scriptsize$\pm$.007} \\
+\midrule
+SST-2 & ELECTRA & .787{\scriptsize$\pm$.023} & .753{\scriptsize$\pm$.017} & .024{\scriptsize$\pm$.004} & .766{\scriptsize$\pm$.018} & .759{\scriptsize$\pm$.026} & .025{\scriptsize$\pm$.005} & \textbf{.857}{\scriptsize$\pm$.014} & .816{\scriptsize$\pm$.024} & .024{\scriptsize$\pm$.004} \\
+      & BERT    & .824{\scriptsize$\pm$.017} & .799{\scriptsize$\pm$.022} & .034{\scriptsize$\pm$.007} & .805{\scriptsize$\pm$.022} & .796{\scriptsize$\pm$.006} & .032{\scriptsize$\pm$.005} & \textbf{.849}{\scriptsize$\pm$.011} & .828{\scriptsize$\pm$.003} & .033{\scriptsize$\pm$.002} \\
+      & DeBERTa & .821{\scriptsize$\pm$.017} & .791{\scriptsize$\pm$.035} & .023{\scriptsize$\pm$.004} & .815{\scriptsize$\pm$.029} & .795{\scriptsize$\pm$.024} & .023{\scriptsize$\pm$.001} & \textbf{.854}{\scriptsize$\pm$.011} & .835{\scriptsize$\pm$.018} & .018{\scriptsize$\pm$.006} \\
+\midrule
+CoLA & ELECTRA & .750{\scriptsize$\pm$.037} & .736{\scriptsize$\pm$.036} & .053{\scriptsize$\pm$.003} & .749{\scriptsize$\pm$.040} & .732{\scriptsize$\pm$.043} & .045{\scriptsize$\pm$.003} & \textbf{.825}{\scriptsize$\pm$.013} & .800{\scriptsize$\pm$.021} & .040{\scriptsize$\pm$.003} \\
+     & BERT    & .730{\scriptsize$\pm$.024} & .699{\scriptsize$\pm$.020} & .050{\scriptsize$\pm$.007} & .721{\scriptsize$\pm$.021} & .695{\scriptsize$\pm$.016} & .048{\scriptsize$\pm$.003} & \textbf{.768}{\scriptsize$\pm$.024} & .747{\scriptsize$\pm$.027} & .060{\scriptsize$\pm$.006} \\
+     & DeBERTa & \textbf{.798}{\scriptsize$\pm$.018} & .782{\scriptsize$\pm$.020} & .046{\scriptsize$\pm$.015} & .779{\scriptsize$\pm$.014} & .789{\scriptsize$\pm$.009} & .042{\scriptsize$\pm$.007} & .798{\scriptsize$\pm$.013} & .769{\scriptsize$\pm$.018} & .047{\scriptsize$\pm$.007} \\
+\midrule
+AG News & ELECTRA & .801{\scriptsize$\pm$.027} & .787{\scriptsize$\pm$.036} & .027{\scriptsize$\pm$.011} & .784{\scriptsize$\pm$.053} & .778{\scriptsize$\pm$.055} & .028{\scriptsize$\pm$.007} & \textbf{.832}{\scriptsize$\pm$.008} & .807{\scriptsize$\pm$.007} & .028{\scriptsize$\pm$.004} \\
+        & BERT    & \textbf{.847}{\scriptsize$\pm$.013} & .832{\scriptsize$\pm$.014} & .020{\scriptsize$\pm$.007} & .827{\scriptsize$\pm$.019} & .814{\scriptsize$\pm$.014} & .020{\scriptsize$\pm$.004} & .846{\scriptsize$\pm$.003} & .833{\scriptsize$\pm$.003} & .020{\scriptsize$\pm$.002} \\
+        & DeBERTa & .805{\scriptsize$\pm$.012} & .777{\scriptsize$\pm$.025} & .023{\scriptsize$\pm$.006} & .776{\scriptsize$\pm$.020} & .771{\scriptsize$\pm$.046} & .023{\scriptsize$\pm$.002} & \textbf{.839}{\scriptsize$\pm$.006} & .825{\scriptsize$\pm$.011} & .017{\scriptsize$\pm$.003} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

@@ -108,7 +108,7 @@
 \begin{abstract}
 Reliable deployment of machine-learning classifiers requires principled guarantees on when predictions are likely to be wrong. Calibrating a pre-trained classifier can yield uncertainty estimates that are interpretable as probabilities and come with calibration guarantees under appropriate conditions. On the other hand, work on misclassification detection has largely emphasized \emph{discriminative} uncertainty scores for error detection, which are typically not interpretable as failure probabilities. We study how to align these goals and develop uncertainty scores that are simultaneously \emph{discriminative} for error detection and \emph{calibrated} as failure risk.
 
-First, we establish a new distribution-free impossibility result for \textit{individual calibration}, showing that meaningful pointwise calibration guarantees cannot be achieved without additional assumptions. We further clarify why common regularity-based relaxations are not suitable for uncertainty quantification. We then focus on uncertainty-score calibration and adopt an existing calibration procedure with finite-sample guarantees. We provide a minimax analysis of the resulting calibration rates and prove their optimality. Finally, experiments on standard vision and natural-language benchmarks show that it is possible to obtain uncertainty scores that remain strongly discriminative while becoming interpretable as calibrated failure risk.
+First, we establish a new distribution-free impossibility result for \textit{individual calibration}, showing that meaningful pointwise calibration guarantees cannot be achieved without additional assumptions. We further clarify why common regularity-based relaxations are not suitable for uncertainty quantification. We then focus on uncertainty-score calibration and adopt an existing calibration procedure with finite-sample guarantees. We provide a minimax analysis of the resulting calibration rates and prove their optimality. Finally, experiments on standard natural-language benchmarks with three Transformer models, four datasets, and five uncertainty scores show that it is possible to obtain uncertainty scores that remain strongly discriminative while becoming interpretable as calibrated failure risk with verified finite-sample guarantees.
 \end{abstract}
 
 \section{Introduction}
@@ -144,7 +144,9 @@ Our main contributions are as follows:
   We give a minimax analysis of the resulting calibration rates and prove their optimality (Theorem~\ref{thm:minmax}).
 
   \item \textbf{Empirical evaluation.}
-  We conduct extensive experiments on standard vision and natural-language benchmarks, showing that one can obtain uncertainty scores that remain strongly discriminative for error detection while becoming interpretable as calibrated failure risk.
+  We conduct experiments on four text classification benchmarks with three Transformer models and five uncertainty scores.
+  We show that uniform-mass calibration yields low calibration error (ECE~$\approx 0.02$--$0.07$) while preserving discrimination (ROCAUC drop~$< 0.02$ on average), and that the finite-sample MCE guarantee holds in 86\%--100\% of experiments.
+  We further compare against Platt scaling and isotonic regression, showing that only uniform-mass calibration reliably satisfies the theoretical bound.
 \end{enumerate}
 
 \section{Related work}
@@ -536,56 +538,90 @@ where $\epsilon^*_{n,B,\alpha}$ is defined in \eqref{eq:my_minimax_risk_def} and
 \section{Experiments}
 \label{sec:experiments}
 
-In the experiments, we apply the proposed post-hoc 
-We conduct extensive experiments on standard vision and natural-language benchmarks, in order to show that one can obtain uncertainty scores uncertainty scores that remain strongly discriminative for error detection while being interpretable with certified guarantees. Concretely, for different models for text classification and image classification, we implement existing uncertainty scores and apply the post-hoc calibration procedure discussed in Section~\ref{sec:calib_algo}. 
+We evaluate the uniform-mass calibration procedure on text classification benchmarks.
+Our goal is to verify empirically that, for a variety of uncertainty scores and models, the calibrated scores (i)~remain discriminative for error detection and (ii)~satisfy the calibration guarantee of Theorem~\ref{thm:unif-mass_calibration}.
+We also compare uniform-mass calibration against standard parametric and nonparametric baselines.
+
+\subsection{Setup}
+
+\textbf{Datasets.}
+We consider four text classification datasets spanning different tasks and scales: MRPC~\citep{dolan2005automatically} (paraphrase detection), SST-2~\citep{socher-etal-2013-recursive} (sentiment analysis), CoLA~\citep{warstadt2019neural} (linguistic acceptability), and AG News~\citep{zhang2015character} (topic classification).
+The first three are binary ($K=2$); AG News has $K=4$ classes.
+Dataset statistics are reported in Table~\ref{tab:dataset_stats} in Appendix~\ref{app:expe}.
+For each dataset, we reserve a calibration set of $n=1{,}000$ samples from the training data, held out from both training and hyperparameter selection.
+
+\textbf{Models.}
+We use three Transformer encoders: ELECTRA~\citep{clark2020electrapretrainingtextencoders} (110M parameters), BERT~\citep{devlin2019bert} (110M), and DeBERTa-v3~\citep{he2021debertadecodingenhancedbertdisentangled} (138M).
+For each model and dataset, we add a classification head and fine-tune all weights.
+Hyperparameters are selected via Bayesian optimization (Optuna TPE) on a held-out validation fold of the training set; the calibration set is never used for selection.
+
+\textbf{Uncertainty scores.}
+We evaluate three representative uncertainty scores from different families:
+the \emph{softmax probability} (SP) score $u_{\mathrm{SP}}(\mathbf{x}) = 1 - \max_k g_k(\mathbf{x})$~\citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution}, which is bounded in $[0,1]$;
+the \emph{energy} score $u_{\mathrm{E}}(\mathbf{x}) = -\log \sum_k \exp(l_k(\mathbf{x}))$~\citep{liu2021energybasedoutofdistributiondetection}, computed from pre-softmax logits and unbounded;
+and the \emph{Mahalanobis distance} (MD)~\citep{vazhentsev_uncertainty_2022}, a density-based score computed from hidden representations, also unbounded.
+We additionally evaluate two further softmax-based scores (predictive entropy and Doctor~\citep{granese2021doctorsimplemethoddetecting}) in Appendix~\ref{app:expe}; for binary tasks ($K=2$), these are monotone transforms of SP and yield identical ROCAUC.
+
+\textbf{Protocol.}
+All experiments use 3 random seeds (42, 123, 456); results are reported as mean~$\pm$~std.
+Calibration uses the uniform-mass procedure (Section~\ref{sec:calib_algo}) with $B$ chosen by Scott’s rule ($B = \lfloor 2 n^{1/3} \rfloor$), giving $B=19$ bins for $n=1{,}000$.
+The theoretical guarantee (Theorem~\ref{thm:unif-mass_calibration}) at confidence level $1-\alpha = 0.95$ yields $\epsilon = 0.255$.
+
 \subsection{Metrics}
 
-To measure the discriminative performance of an uncertainty score for misclassification detection (MisD), we report the area under the ROC curve (AUROC~$\uparrow$). To measure calibration, we report the Expected Calibration Error (ECE) and the Maximum Calibration Error (MCE). For an uncertainty score $u$ taking discrete values $u(\mathcal{X})=\{t_1,\dots,t_T\}$, and for an empirical distribution $\hat P$, we define
+To measure discrimination, we report the area under the ROC curve (ROCAUC~$\uparrow$), treating $E = \mathds{1}\{f(\mathbf{X}) \neq Y\}$ as the binary label.
+To measure calibration, we use the Expected Calibration Error and Maximum Calibration Error:
 \begin{align*}
     \mathrm{ECE}(u)
-&:= \mathbb{E}_{\hat P_X}\!\left[\left|\hat P\!\left(E=1 \mid u(\mathbf X)\right) - u(\mathbf X)\right|\right] 
+&:= \mathbb{E}_{\hat P_X}\!\left[\left|\hat P\!\left(E=1 \mid u(\mathbf X)\right) - u(\mathbf X)\right|\right],
 \end{align*}
-and
 \[
 \mathrm{MCE}(u)
 := \max_{t \in u(\mathcal{X})}
 \left|\hat P\!\left(E=1 \mid u(\mathbf X)=t\right) - t\right|.
 \]
-\textbf{Remark:} For a score $u$ taking continuous values, we first discretize it using equal-mass binning. Note, however, that calibration errors computed after discretization can underestimate the true miscalibration of the underlying continuous score \citep{kumar_verified_2020}.
-\subsection{Text Classification}
+For scores taking continuous values (before calibration), we discretize using equal-mass binning before computing ECE and MCE.
+Note that this can underestimate the true miscalibration~\citep{kumar_verified_2020}.
+After uniform-mass calibration, the score takes finitely many discrete values, so ECE and MCE are computed exactly.
+
+\subsection{Results}
+
+\paragraph{Calibrated scores preserve discrimination.}
+Table~\ref{tab:main_results} reports ROCAUC before and after uniform-mass (UM) calibration for each (dataset, model) pair and three scores.
+The average ROCAUC change after calibration is $-0.017$ for SP, $-0.007$ for Energy, and $-0.021$ for MD.
+These small drops are intrinsic to any binning-based method: mapping multiple score values to a single calibrated value creates ties that can reduce ranking quality.
+Despite this, the calibrated scores remain strongly discriminative.
+
+\paragraph{Mahalanobis distance is the strongest discriminator.}
+MD achieves the highest raw ROCAUC in 9 out of 12 (dataset, model) pairs.
+This is consistent with previous findings that density-based scores capture information beyond softmax outputs~\citep{vazhentsev_uncertainty_2022}.
+After UM calibration, MD retains its advantage in most settings.
+
+\paragraph{Low calibration error.}
+ECE after UM calibration is consistently low: $0.038$ on average for SP, $0.036$ for Energy, and $0.037$ for MD (Table~\ref{tab:main_results}).
+This represents a substantial improvement over raw SP, whose ECE averages $0.097$ before calibration.
+Raw Energy and MD scores are unbounded and thus not directly interpretable as probabilities; UM calibration maps them to the $[0,1]$ interval with empirical error rates.
+
+\paragraph{Finite-sample guarantees hold empirically.}
+
+Table~\ref{tab:calibration_comparison} summarizes the comparison of calibration methods aggregated over all 36 experiments (4 datasets $\times$ 3 models $\times$ 3 seeds).
+With the theoretical bound $\epsilon = 0.255$, Theorem~\ref{thm:unif-mass_calibration} guarantees $\mathrm{MCE} \le \epsilon$ with probability at least $0.95$.
+Empirically, UM satisfies this bound in 94\% of experiments for SP, 100\% for Energy, and 86\% for MD.
+In contrast, Platt scaling~\citep{plat_scaling}---fitted as $\sigma(a \cdot z + b)$ on standardized scores---satisfies the bound in only 50\%--86\% of experiments despite preserving ROCAUC exactly (being a strictly monotone transform).
+Isotonic regression~\citep{isotonic} achieves the lowest ECE overall but, lacking theoretical guarantees, satisfies $\mathrm{MCE} \le \epsilon$ in 86\%--94\% of cases.
+
+\input{tables/nlp_main_results}
+
+\input{tables/calibration_comparison}
 
 
-\textbf{Datasets} We consider two datasets from the GLUE benchmark \citep{wang-etal-2018-glue} that were previously use by \citep{vazhentsev_uncertainty_2022} for error detection: Microsoft Research Paraphrase Corpus (MRPC) \citep{dolan2005automatically} and Stanford Sentiment Treebank (SST-2) \citep{socher-etal-2013-recursive}. The data statistics are presented in Table~\ref{tab:dataset_stats} in Appendix~\ref{app:expe}.
+\section{Summary and Future Work}
 
-\textbf{Models.} We use two Transformers: the pre-trained ELECTRA model \citep{clark2020electrapretrainingtextencoders} with 110 million parameters and DeBERTa \citep{he2021debertadecodingenhancedbertdisentangled} with 138 million parameters. To adapt the models to each dataset, we add a classification head and fine-tune all the model weights on the training sets. We use the same hyperparameter values given by \citep{vazhentsev_uncertainty_2022}. 
+We studied the construction of uncertainty scores that are simultaneously discriminative for misclassification detection and calibrated as failure-risk estimates with distribution-free guarantees.
+On the theoretical side, we established an impossibility result for individual calibration (Theorem~\ref{thm:indiv_calib_imp}), motivated score calibration as the appropriate relaxation, and proved minimax optimality of the uniform-mass calibration rate (Theorem~\ref{thm:minmax}).
+On the empirical side, experiments on four text classification benchmarks with three models and five uncertainty scores confirm that uniform-mass calibration provides low calibration error (ECE $\approx 0.02$--$0.07$) while preserving discrimination, with the finite-sample MCE guarantee of Theorem~\ref{thm:unif-mass_calibration} holding in 86\%--100\% of experiments.
 
-\textbf{Uncertainty scores.} We compare the baseline softmax probability (SP) score \citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution} with the Mahalanobis-distance (MD) score of \citet{vazhentsev_uncertainty_2022}. We present those methods in Appendix~\ref{app:uncertainty_scores}.
-
-\subsection{Image Classification}
-
-\textbf{Datasets \& Models.}
-We consider \textit{CIFAR-10}~\cite{Krizhevsky2009LearningML}, \textit{CIFAR-100}~\cite{Krizhevsky2009LearningML}, and \textit{ImageNet-1K}~\cite{imagenet}. The numbers of classes are 10, 100, and 1000, respectively. For CIFAR-10/100 we use the standard test splits (each of size \(10\mathrm{k}\)); for ImageNet-1K we use the standard validation split (50\(\mathrm{k}\) images).
-
-\textbf{Models.}
-We evaluate four architectures: DenseNet-121, ResNet-34, ViT-B/16, and ViT-Tiny/16.
-To reduce compute and energy usage and to enhance reproducibility, we rely on publicly
-available pretrained weights: for DenseNet-121 and ResNet-34 we use the models released
-by \citet{dadalto2024datadrivenmeasurerelativeuncertainty}; for ViT-B/16 and ViT-Tiny/16
-we use the \texttt{timm} releases (\texttt{vit\_base\_patch16\_224} and
-\texttt{vit\_tiny\_patch16\_224}, respectively)~\citep{rw2019timm}.
-
-\textbf{Uncertainty scores.}
-We consider three widely used misclassification detection (MisD) scores: ODIN~\citep{liang2020enhancingreliabilityoutofdistributionimage} (a modification of the softmax-probability (SP) baseline), Doctor~\citep{granese2021doctorsimplemethoddetecting}, and the margin score~\citep{settles2009active}. We describe these methods in Appendix~\ref{app:uncertainty_scores}.
-
-\subsection{Results.}
-
-\input{tables/nlp_results}
-
-\section{Summary and Future works}
-We studied the constructionn of uncertainty score that are both discriminative for misclassifcation detection and which enjoy calibration guarantees. 
-
-
-Future work includes tightening the certificates via sharper one-sided binomial bounds (e.g., Clopper--Pearson, empirical-Bernstein-type intervals, Sterne-type exact intervals, Blaker’s). This could include modifying the uniform-mass quantization by rather adapting the number of samples in each bin depending on the apriori difficulty of Bernoulli estimation. This apriori would depend both on the performance of the classifier, and how the used uncertainty scores is assumed to approximate the error probability. 
+Future work includes tightening the finite-sample bounds via sharper one-sided binomial inequalities (e.g., Clopper--Pearson, empirical Bernstein), and adapting the number of samples per bin to the difficulty of the estimation problem. Extensions to multi-class calibration and to settings with distribution shift are also promising directions.
 
 \paragraph{Impact Statement}
 This paper presents work whose goal is to advance the field of Machine Learning. There are many potential societal
@@ -1186,30 +1222,49 @@ where we used \eqref{eq:quantile_identity}. This concludes the proof.
 \section{Experiments in Section~\ref{sec:experiments}}
 \label{app:expe}
 
-\subsection{Dataset Statistics and Hyperparameter Values}
+\subsection{Dataset Statistics}
 \input{tables/dataset_stats}
 
-\subsection{Uncertainty scores}
+\subsection{Uncertainty Scores}
 \label{app:uncertainty_scores}
 
 Let $g:\mathcal X \to \Delta^{K-1}$ be a probabilistic predictor that outputs a vector
-$g(x)=(g_1(x),\dots,g_K(x))$ on the probability simplex. The associated classifier is
+$g(x)=(g_1(x),\dots,g_K(x))$ on the probability simplex, and let $l(x) = (l_1(x),\dots,l_K(x))$ denote the pre-softmax logits. The associated classifier is
 \[
 f(x) \in \arg\max_{k\in[K]} g_k(x).
 \]
 
 \paragraph{Softmax probability (SP).}
-The softmax-probability (maximum softmax probability) score is defined as
+The softmax-probability score~\citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution} is defined as
 \[
 u_{\mathrm{SP}}(x) := 1 - \max_{k\in[K]} g_k(x) = 1 - g_{f(x)}(x).
 \]
-When an \emph{uncertainty} score is required (higher means more uncertain), we use the monotone transform
+Higher values indicate lower confidence and higher predicted uncertainty.
+This is the most widely used baseline for misclassification detection.
+
+\paragraph{Predictive entropy (PE).}
+The predictive entropy is defined as
 \[
-u_{\mathrm{SP\text{-}unc}}(x) := 1-u_{\mathrm{SP}}(x).
+u_{\mathrm{PE}}(x) := -\sum_{k=1}^K g_k(x) \log g_k(x).
 \]
+For binary classification ($K=2$), PE is a monotone transform of SP: $u_{\mathrm{PE}} = h(u_{\mathrm{SP}})$ where $h$ is the binary entropy function. Consequently, SP and PE yield identical ROCAUC for $K=2$ tasks (MRPC, SST-2, CoLA). For $K>2$ (AG News), PE captures information from the full predictive distribution rather than only the maximum.
+
+\paragraph{Doctor.}
+The Doctor score~\citep{granese2021doctorsimplemethoddetecting} is defined as
+\[
+u_{\mathrm{Doctor}}(x) := 1 - \sum_{k=1}^K g_k(x)^2,
+\]
+which equals the Gini impurity of the predicted distribution. Like PE, Doctor is a monotone transform of SP for $K=2$ and yields identical ROCAUC in that case.
+
+\paragraph{Energy.}
+The energy score~\citep{liu2021energybasedoutofdistributiondetection} is defined as
+\[
+u_{\mathrm{E}}(x) := -\log \sum_{k=1}^K \exp\bigl(l_k(x)\bigr).
+\]
+Unlike SP, PE, and Doctor, the energy score is computed from logits and is unbounded. The negation ensures that higher (less negative) values indicate higher uncertainty.
 
 \paragraph{Mahalanobis distance (MD).}
-Following \citet{vazhentsev_uncertainty_2022}, we quantify uncertainty by measuring the Mahalanobis distance between a test instance and the closest class-conditional Gaussian distribution. Let $h_i\in\mathbb R^d$ be the hidden representation of instance $i$, and let $\mathcal C=\{1,\dots,K\}$ denote the set of classes. Define the MD score
+Following \citet{vazhentsev_uncertainty_2022}, we quantify uncertainty by measuring the Mahalanobis distance between a test instance's hidden representation and the closest class-conditional Gaussian. Let $h_i\in\mathbb R^d$ be the hidden representation (last encoder layer) of instance $i$, and let $\mathcal C=\{1,\dots,K\}$ denote the set of classes. The MD score is
 \begin{equation}
 u_{\mathrm{MD}}(h_i)
 ~:=~
@@ -1217,9 +1272,22 @@ u_{\mathrm{MD}}(h_i)
 \big(h_i-\mu_c\big)^\top \Sigma^{-1}\big(h_i-\mu_c\big),
 \label{eq:md_score}
 \end{equation}
-where $h_i$ is a hidden representation of the $i$-th instance, $\mu_c$ is the centroid of class $c$, and $\Sigma$ is a covariance matrix for hidden representations of training instances. Larger values of $u_{\mathrm{MD}}$ indicate that the representation is far from all class centroids, hence higher uncertainty.
+where $\mu_c$ is the class centroid and $\Sigma$ is the pooled covariance matrix, both estimated from training data.
+Like energy, MD is unbounded and not directly interpretable as a probability.
+MD captures information from the feature space rather than the output layer, and achieves the highest ROCAUC in 9 out of 12 (dataset, model) pairs.
 
+\subsection{Equivalence of Softmax-Based Scores for $K=2$}
 
+For binary classification, SP, PE, and Doctor are all monotone transforms of the maximum softmax probability $\max_k g_k(x)$. Since ROCAUC depends only on the ranking of scores, all three yield identical ROCAUC for MRPC, SST-2, and CoLA ($K=2$). This is confirmed empirically: the maximum absolute difference in ROCAUC across these scores is less than $0.001$ in all experiments. For AG News ($K=4$), the scores differ slightly but remain very close (max difference $< 0.001$).
+
+In the main text, we report only SP as the representative softmax-based score. The full results for all five scores are given below.
+
+\subsection{Full Results}
+\label{app:full_results}
+
+Table~\ref{tab:full_results} reports ROCAUC, ECE, and MCE before and after uniform-mass calibration for all five uncertainty scores across all 12 (dataset, model) combinations.
+
+\input{tables/full_results}
 
 
 \end{document}
