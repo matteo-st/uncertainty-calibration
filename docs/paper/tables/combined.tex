@@ -1,0 +1,40 @@
+% Combined results table (Stone's rule). Mean ± std over 9 seeds.
+\begin{table}[t]
+\centering
+\caption{Comparison of uncertainty scores vs.\ our conservatively calibrated score $\widehat{u}$ \eqref{eq:calib_score} counterpart. Confidence level $1 - \alpha$ is set to $95\%$. Results are average over 9 seeds.}
+\label{tab:combined_results}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+& & \multicolumn{2}{c}{\textbf{ROC-AUC} $\uparrow$} & \multicolumn{2}{c}{\textbf{AURC} $\downarrow$} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6}
+\textbf{Dataset} & \textbf{Model} & Margin & Ours & Margin & Ours \\
+\midrule
+ImageNet & ViT-B/16 & \textbf{.872}{\scriptsize $\pm$.002} & .871{\scriptsize $\pm$.002} & .383{\scriptsize $\pm$.004} & \textbf{.382}{\scriptsize $\pm$.003} \\
+ImageNet & ViT-Ti/16 & \textbf{.863}{\scriptsize $\pm$.001} & .862{\scriptsize $\pm$.001} & .472{\scriptsize $\pm$.002} & \textbf{.471}{\scriptsize $\pm$.002} \\
+CIFAR-100 & ResNet-34 & .869{\scriptsize $\pm$.010} & \textbf{.875}{\scriptsize $\pm$.003} & \textbf{.421}{\scriptsize $\pm$.017} & .432{\scriptsize $\pm$.008} \\
+CIFAR-100 & DenseNet-121 & \textbf{.853}{\scriptsize $\pm$.003} & .849{\scriptsize $\pm$.003} & .479{\scriptsize $\pm$.008} & \textbf{.475}{\scriptsize $\pm$.006} \\
+CIFAR-10 & ResNet-34 & \textbf{.924}{\scriptsize $\pm$.012} & .907{\scriptsize $\pm$.012} & \textbf{.136}{\scriptsize $\pm$.012} & .145{\scriptsize $\pm$.007} \\
+CIFAR-10 & DenseNet-121 & .893{\scriptsize $\pm$.050} & \textbf{.899}{\scriptsize $\pm$.010} & \textbf{.151}{\scriptsize $\pm$.021} & .164{\scriptsize $\pm$.006} \\
+\midrule
+\textbf{Dataset} & \textbf{Model} & MSP & Ours & MSP & Ours \\
+\midrule
+ImageNet & ViT-B/16 & .875{\scriptsize $\pm$.002} & \textbf{.875}{\scriptsize $\pm$.002} & .390{\scriptsize $\pm$.003} & \textbf{.388}{\scriptsize $\pm$.001} \\
+ImageNet & ViT-Ti/16 & \textbf{.867}{\scriptsize $\pm$.001} & .867{\scriptsize $\pm$.001} & .483{\scriptsize $\pm$.002} & \textbf{.481}{\scriptsize $\pm$.000} \\
+CIFAR-100 & ResNet-34 & \textbf{.881}{\scriptsize $\pm$.003} & .876{\scriptsize $\pm$.005} & .442{\scriptsize $\pm$.007} & \textbf{.439}{\scriptsize $\pm$.008} \\
+CIFAR-100 & DenseNet-121 & .853{\scriptsize $\pm$.008} & \textbf{.853}{\scriptsize $\pm$.003} & \textbf{.483}{\scriptsize $\pm$.011} & .483{\scriptsize $\pm$.008} \\
+CIFAR-10 & ResNet-34 & \textbf{.927}{\scriptsize $\pm$.004} & .908{\scriptsize $\pm$.013} & .148{\scriptsize $\pm$.007} & \textbf{.145}{\scriptsize $\pm$.008} \\
+CIFAR-10 & DenseNet-121 & .887{\scriptsize $\pm$.039} & \textbf{.900}{\scriptsize $\pm$.008} & \textbf{.160}{\scriptsize $\pm$.012} & .165{\scriptsize $\pm$.007} \\
+\midrule
+\textbf{Dataset} & \textbf{Model} & Doctor & Ours & Doctor & Ours \\
+\midrule
+ImageNet & ViT-B/16 & \textbf{.875}{\scriptsize $\pm$.002} & .873{\scriptsize $\pm$.002} & .388{\scriptsize $\pm$.002} & \textbf{.388}{\scriptsize $\pm$.002} \\
+ImageNet & ViT-Ti/16 & \textbf{.865}{\scriptsize $\pm$.002} & .864{\scriptsize $\pm$.003} & .480{\scriptsize $\pm$.003} & \textbf{.479}{\scriptsize $\pm$.003} \\
+CIFAR-100 & ResNet-34 & .874{\scriptsize $\pm$.004} & \textbf{.876}{\scriptsize $\pm$.006} & \textbf{.434}{\scriptsize $\pm$.008} & .438{\scriptsize $\pm$.008} \\
+CIFAR-100 & DenseNet-121 & \textbf{.857}{\scriptsize $\pm$.003} & .853{\scriptsize $\pm$.004} & .486{\scriptsize $\pm$.008} & \textbf{.483}{\scriptsize $\pm$.009} \\
+CIFAR-10 & ResNet-34 & \textbf{.923}{\scriptsize $\pm$.011} & .904{\scriptsize $\pm$.018} & \textbf{.138}{\scriptsize $\pm$.010} & .145{\scriptsize $\pm$.008} \\
+CIFAR-10 & DenseNet-121 & .898{\scriptsize $\pm$.039} & \textbf{.900}{\scriptsize $\pm$.010} & \textbf{.157}{\scriptsize $\pm$.016} & .165{\scriptsize $\pm$.007} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

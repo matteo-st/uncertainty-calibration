@@ -1,0 +1,18 @@
+{
+  "score_type": "doctor",
+  "score_label": "Doctor",
+  "conservative": {
+    "n_bins": 50,
+    "n_violations": 0
+  },
+  "calibrated_mean": {
+    "n_bins": 50,
+    "n_violations": 25,
+    "ece": 0.010210884493533523
+  },
+  "raw_score": {
+    "n_bins": 50,
+    "n_violations": 44,
+    "ece": 0.05392192067047011
+  }
+}

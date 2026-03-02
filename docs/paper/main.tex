@@ -1,0 +1,1225 @@
+%%%%%%%% ICML 2026 LATEX SUBMISSION FILE %%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+% Recommended, but optional, packages for figures and better typesetting:
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs} % for professional tables
+
+% hyperref makes hyperlinks in the resulting PDF.
+\usepackage{hyperref}
+
+% Attempt to make hyperref and algorithmic work together better:
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Use the following line for the initial blind version submitted for review:
+\usepackage{icml2026}
+% For preprint, use:
+% \usepackage[preprint]{icml2026}
+% If accepted, instead use:
+% \usepackage[accepted]{icml2026}
+
+% Math packages
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{amsthm}
+\usepackage{thmtools,thm-restate}
+\usepackage{dsfont}
+
+% Tables
+\usepackage{multirow}
+\usepackage{siunitx}
+
+% Needed for your comment macros + colors + conditionals
+\usepackage{ifthen}   % required by \newboolean/\ifthenelse
+\usepackage{xspace}   % required by \xspace in \zzz
+\usepackage{xcolor}   % required by \definecolor
+
+% if you use cleveref..
+\usepackage[capitalize,noabbrev]{cleveref}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% THEOREMS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% Todonotes is useful during development:
+\usepackage[textsize=tiny]{todonotes}
+
+% Comments
+\newboolean{showcomments}
+\setboolean{showcomments}{true}
+\ifthenelse{\boolean{showcomments}}
+{ \newcommand{\mynote}[3]{
+		\fbox{\bfseries\sffamily\scriptsize#1}
+		{\small$\blacktriangleright$\textsf{\emph{\color{#3}{#2}}}$\blacktriangleleft$}}
+	\newcommand{\zzz}[1]{{\setlength{\fboxsep}{2pt}\fcolorbox{black}{yellow}{\textsf{\emph{#1}}}}\xspace}}
+{ \newcommand{\mynote}[3]{}
+	\newcommand{\zzz}[1]{}}
+\newcommand{\ms}[1]{\mynote{Matteo}{#1}{orange}}
+\newcommand{\yc}[1]{\mynote{Yann}{#1}{cyan}}
+\newcommand{\rp}[1]{\mynote{Rafael}{#1}{purple}}
+\definecolor{ao(english)}{rgb}{0.0, 0.5, 0.0}
+\newcommand{\pp}[1]{\mynote{Pablo}{#1}{ao(english)}}
+
+% Running title
+\icmltitlerunning{Calibrated Uncertainty Quantification for Error Detection}
+
+\begin{document}
+
+\twocolumn[
+  \icmltitle{Calibrated Uncertainty Quantification for Error Detection}
+
+  % Author information can stay in the source; the style hides it in blind mode.
+  \icmlsetsymbol{equal}{*}
+  \begin{icmlauthorlist}
+    \icmlauthor{Firstname1 Lastname1}{equal,yyy}
+    \icmlauthor{Firstname2 Lastname2}{equal,yyy,comp}
+    \icmlauthor{Firstname3 Lastname3}{comp}
+    \icmlauthor{Firstname4 Lastname4}{sch}
+  \end{icmlauthorlist}
+
+  \icmlaffiliation{yyy}{Department of XXX, University of YYY, Location, Country}
+  \icmlaffiliation{comp}{Company Name, Location, Country}
+  \icmlaffiliation{sch}{School of ZZZ, Institute of WWW, Location, Country}
+
+  \icmlcorrespondingauthor{Firstname1 Lastname1}{first1.last1@xxx.edu}
+
+  \icmlkeywords{Misclassification Detection, Distribution-Free Inference, Confidence Intervals}
+
+  \vskip 0.3in
+]
+
+\printAffiliationsAndNotice{}  % required even if empty
+
+\begin{abstract}
+Reliable deployment of machine-learning classifiers requires principled guarantees on when predictions are likely to be wrong. Calibrating a pre-trained classifier can yield uncertainty estimates that are interpretable as probabilities and come with calibration guarantees under appropriate conditions. On the other hand, work on misclassification detection has largely emphasized \emph{discriminative} uncertainty scores for error detection, which are typically not interpretable as failure probabilities. We study how to align these goals and develop uncertainty scores that are simultaneously \emph{discriminative} for error detection and \emph{calibrated} as failure risk.
+
+First, we establish a new distribution-free impossibility result for \textit{individual calibration}, showing that meaningful pointwise calibration guarantees cannot be achieved without additional assumptions. We further clarify why common regularity-based relaxations are not suitable for uncertainty quantification. We then focus on uncertainty-score calibration and adopt an existing calibration procedure with finite-sample guarantees. We provide a minimax analysis of the resulting calibration rates and prove their optimality. Finally, experiments on standard vision and natural-language benchmarks show that it is possible to obtain uncertainty scores that remain strongly discriminative while becoming interpretable as calibrated failure risk.
+\end{abstract}
+
+\section{Introduction}
+Deep learning systems now power decision-making in safety-critical settings, including autonomous driving \citep{hecker2018failurepredictionautonomousdriving}, medical diagnosis \citep{medicalexample}, robotics \citep{grislain2025ifailsensegeneralroboticfailure}, and large-scale language applications \citep{kumar2023conformalpredictionlargelanguage}.
+Although these models can be highly accurate on average, they may produce rare yet consequential mistakes, often accompanied by overconfident predictions. In such environments, reliable uncertainty estimates are needed for a practitioner to decide when to trust a model’s prediction, when to defer to a human expert, or when to abstain.
+
+A common baseline for assessing a classifier’s confidence is the \textit{Maximum Softmax Probability} (MSP), defined as the softmax probability assigned to the predicted label. Neural networks are often overconfident \citep{guo2017calibrationmodernneuralnetworks}, and much of the calibration literature studies post-hoc procedures that make MSP calibrated (\emph{confidence calibration}) or, more stringently, make the full predictive distribution calibrated (\emph{multiclass calibration}). Importantly, confidence calibration implies that MSP is also calibrated for the task of misclassification detection.
+
+\emph{Misclassification detection} (MisD), also called failure prediction or error detection, asks: given an input $\mathbf{x}$, can we predict whether a classifier $f(\mathbf{x})$ will be correct? MSP is a standard baseline \citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution}, and subsequent work has focused on improving this baseline. A large body of work reports strong empirical performance on both vision and natural-language tasks
+\citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution, jiang_trust, granese2021doctorsimplemethoddetecting, dadalto2024datadrivenmeasurerelativeuncertainty, gudovskiy2023flowenedet, moon2020confidenceawarelearningdeepneural, fisch2022calibrated, vazhentsev_uncertainty_2022, vashurin_benchmarking_2025}.
+Despite these successes, most existing methods do not yield scores that are interpretable as misclassification risk, \textit{i.e.}, they are not \textit{calibrated} for misclassification detection.
+
+Overall, uncertainty estimation for error detection should aim for uncertainty scores that are both (i) discriminative for separating correct from incorrect predictions and (ii) interpretable as probabilities of failure risk. Calibration and misclassification detection have largely pursued these objectives separately. In this work, we take a step toward bridging this gap.
+
+Our main contributions are as follows:
+
+\begin{enumerate}
+  \item \textbf{Impossibility of individual calibration.}
+  We consider the most demanding notion of calibration for an uncertainty score $u:\mathcal{X}\to[0,1]$, namely \emph{individual calibration} \citep{zhao_individual_2020, rina2020inference}:
+  \[
+    u(\mathbf{x}) = \mathbb{P}(E=1 \mid \mathbf{X}=\mathbf{x}),
+  \]
+  where $ E := \mathds{1}\{f(\mathbf{X})\neq Y\}$ denotes the occurrence of an error. Individual calibration is known to be infeasible without strong assumptions; we provide a new quantitative impossibility result in the distribution-free setting (Theorem~\ref{thm:indiv_calib_imp}).
+  Moreover, common relaxations based on regularity of the data distribution (e.g., Lipschitz/smoothness assumptions) are not suitable for uncertainty quantification: except in degenerate cases, the function $\mathbf{x}\mapsto \mathbb{P}(E=1\mid \mathbf{X}=\mathbf{x})$ exhibits intrinsic irregularities (Proposition~\ref{prop:proba_error_smoothness}).
+
+  \item \textbf{Uncertainty-score calibration with optimal rates.}
+  To overcome the above limitation, we focus on \emph{score calibration}:
+  \[
+    \mathbb{P}(E=1 \mid u(\mathbf{X})) = u(\mathbf{X}) \quad \text{a.s.}
+  \]
+  We motivate that, to obtain meaningful distribution-free guarantees, calibration procedures must return scores taking finitely many (discrete) values.
+  We therefore adopt the uniform-mass calibration procedure of \citet{gupta_distribution-free_2021}, which provides finite-sample calibration guarantees.
+  We give a minimax analysis of the resulting calibration rates and prove their optimality (Theorem~\ref{thm:minmax}).
+
+  \item \textbf{Empirical evaluation.}
+  We conduct extensive experiments on standard vision and natural-language benchmarks, showing that one can obtain uncertainty scores that remain strongly discriminative for error detection while becoming interpretable as calibrated failure risk.
+\end{enumerate}
+
+\section{Related work}
+\label{sec:related_work}
+
+\textbf{Misclassification detection.}
+Misclassification detection (MisD) has been studied under various names, including failure prediction and confidence estimation.
+Post-hoc approaches typically rely on softmax probabilities or related uncertainty scores, and are often evaluated on both misclassification detection and out-of-distribution detection benchmarks
+\citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution, granese2021doctorsimplemethoddetecting, dadalto2024datadrivenmeasurerelativeuncertainty, gudovskiy2023flowenedet}.
+Other post-hoc methods train auxiliary confidence estimators
+\citep{jiang_trust, moon2020confidenceawarelearningdeepneural, fisch2022calibrated, zhu2023openmixexploringoutliersamples, NEURIPS2019_757f843a}.
+Density-based methods, such as Mahalanobis-distance scores, have also been used to quantify how a test sample deviates from the training distribution
+\citep{vazhentsev_uncertainty_2022}.
+Finally, training-time modifications and architectural adaptations aim to build error-awareness directly into the model
+\citep{corbière2019addressingfailurepredictionlearning, corbière2021confidenceestimationauxiliarymodels, luo2021learningpredicttrustworthinesssteep, huang2020selfadaptivetrainingempiricalrisk, yan2025ratboostingmisclassificationdetection, zhu2024revisitingconfidenceestimationreliable}.
+However, most existing MisD methods do not come with provable guarantees that their scores are interpretable as failure probabilities (e.g., via score calibration).
+\citet{vashurin_benchmarking_2025} recently emphasized this limitation and proposed post-hoc calibration techniques, but without providing calibration guarantees.
+
+% Moreover, deep ensemble (Lakshminarayanan et al., 2017) are known for producing good uncertainty scores but require a large additional memory footprint for storing several versions of weights and multiply an amount of computation for conducting several forward passes
+
+
+
+
+
+\textbf{Selective classification.}
+Selective classification (also called classification with rejection or abstention) studies predictors that may abstain on
+inputs deemed unreliable, trading coverage for accuracy.
+For deep networks, a common practical approach is to threshold an uncertainty score and study the resulting
+risk--coverage tradeoff \citep{geifman2017selectiveclassificationdeepneural, geifman2019selectivenetdeepneuralnetwork}.
+In particular, \citet{geifman2017selectiveclassificationdeepneural} propose a procedure to choose the rejection threshold
+(e.g., using a held-out set) so as to meet a user-specified target selective risk with high probability.
+More recently, \citet{fisch2022calibrated} study \emph{selective calibration}, i.e., calibration of uncertainty estimates on the
+\emph{accepted} set; their uncertainty score is one minus the maximum softmax probability \citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution}.
+
+
+\textbf{Calibration.}
+Calibration asks whether a model’s soft predictions can be interpreted as probabilities \cite{brier_verification_1950}.
+A common approach is \emph{post-hoc} calibration, which learns a mapping from scores to probabilities.
+Popular nonparametric methods include histogram/binning-based calibration \cite{naeini_binary_2014, zadrozny_obtaining_nodate}
+and isotonic regression \cite{isotonic, berta_classifier_2023}, while parametric approaches include Platt scaling
+\cite{plat_scaling} and temperature scaling for modern neural networks \cite{guo2017calibrationmodernneuralnetworks}.
+Recent works further highlight that, without additional assumptions, widely used calibration-error metrics can be
+statistically difficult to estimate in a distribution-free way for procedures returning continuous-valued scores
+\cite{gupta2022distributionfreebinaryclassificationprediction, arrieta-ibarra_metrics_2022, rossellini2025calibrationmetrictestableactionable}.
+Although deep neural networks are often miscalibrated \cite{guo2017calibrationmodernneuralnetworks}, most of the literature
+focuses on calibrating class probabilities; calibration of error detectors has received comparatively less attention. We therefore propose a calibration target for uncertainty scores, tailored to selective classification.
+
+% \textbf{Conformal prediction and conformal risk control.}
+% Conformal prediction (CP) is a general framework that wraps any black-box predictor with \emph{distribution-free}, finite-sample guarantees under exchangeability, typically in the form of prediction sets or intervals enjoying marginal coverage \citep{vovk}.
+% While CP guarantees coverage on average over test points, distribution-free \emph{conditional} guarantees are impossible in general, motivating a variety of relaxations and alternative targets \citep{barber2021limits}. 
+
+% Beyond coverage, \citet{angelopoulos2025conformalriskcontrol} develop \emph{conformal risk control} (CRC), which generalizes split conformal calibration to control the expected value of any bounded \emph{monotone} loss function (recovering standard CP as a special case) and proposes extensions such as multiple risk constraints and robustness to certain forms of distribution shift \citep{angelopoulos2025conformalriskcontrol, barber2023conformalpredictionexchangeability}. Conformal methods have also been connected to selective classification.
+% In binary classification, CP can output singleton or nonsingleton label sets; accepting only singleton sets yields a classifier with a reject option and distribution-free guarantees on the error rate of the accepted predictions \citep{reject_conformal}.
+% More recently, \citet{xu2025selectiveconformalriskcontrol} propose \emph{Selective Conformal Risk Control}, a two-stage approach that first selects “confident” inputs and then applies CRC on the selected subset to produce calibrated \emph{prediction sets} with risk/coverage guarantees.
+% In contrast, our objective is not to construct conformal prediction sets nor to tie abstention to singleton-set events.
+% Instead, we calibrate an \emph{arbitrary} error-uncertainty score into high-probability \emph{upper bounds} on the misclassification probability, so that thresholding the calibrated score directly yields abstention policies with selective-risk control by design.
+
+
+% \textbf{Nonparametric regression coverage.}
+% Constructing confidence intervals for regression functions is a classical problem.
+% A standard line of work assumes that the regression function lies in a smoothness class, e.g.,
+% $\beta$-Hölder with $\beta\in\{1,2\}$ corresponding to Lipschitz continuity or Lipschitz gradient.
+% When $\beta$ is known, one can construct pointwise confidence intervals with minimax-optimal shrinking rates,
+% with typical radius of order $\mathcal{O}\!\big(n^{-\frac{\beta}{2\beta+d}}\big)$ (e.g., using local averaging methods such
+% as $k$-nearest neighbors with a suitably chosen $k$ and appropriate bias control)
+% \citep{gyorfiDistributionFree, Giné_Nickl_2015}.
+% However, this rate cannot be achieved when $\beta$ is unknown \citep{rina2020inference, Low97, gyorfiDistributionFree, Giné_Nickl_2015}. In contrast, in the \emph{distribution-free} setting—imposing no structural assumptions on the regression function—several works
+% establish impossibility results for conditional inference
+% \citep{barber2020limitsdistributionfreeconditionalpredictive, rina2020inference, lee2022distributionfreeinferenceregressiondiscrete, dohonoOneSided}.
+% In particular, \citet{rina2020inference} shows that, any valid distribution-free confidence interval for the
+% regression function cannot shrink to zero uniformly with the sample size.
+% Relatedly, \citet{gupta2022distributionfreebinaryclassificationprediction} studies distribution-free inference at a \emph{coarser resolution},
+% where the target is a coarsened/quantized version of the conditional mean.
+% While these works focus on general regression functions, our focus is the specific regression function arising in error detection, i.e. conditional misclassification probability (or quantized variants).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ 
+
+% At a given pint $\mathbf{x} \in \mathcal{X}$, an error can occur because of \textit{epistemic uncertainty} - the model $f$ is imperfect because of limited training data - and/or because  of \textit{aleatoric uncertainty} - the label distributions $P_{Y\mid \mathbf{X}}( \cdot \mid \mathbf{x})$ is inherently noisy.
+
+
+% The optimal uncertainty score is given by the probability of error at any input point,
+% \begin{equation}
+% \label{eq:error_prob_func}
+% \;P\!\left(E=1\,\middle|\,\mathbf{X}=\mathbf{x}\right).
+% \end{equation}
+% % for $P_X\text{-a.e. }\mathbf{x}\in\mathcal X$. 
+% Estimating the quantity \eqref{eq:error_prob_func} is typically infeasible if no assumptions are made on the data distribution $P$ \cite{rina2020inference, zhao_individual_2020}.
+
+
+% \subsection{Uncertainty Calibration}
+
+% \subsection{Model Confidence Calibration}
+
+
+
+
+
+% The traditional definition of calibration for a forecast $u$ is that
+% $$
+% P(E=1 \mid u(\mathbf{X})) = u(\mathbf{X}), \quad \mathrm{a.s.}
+% $$
+% More generally, a forecast $u$ is calibrated w.r.t. a $\sigma-$algebra $\mathcal{H}$ if:
+% $$
+% P(E=1 \mid \mathcal{H}) = u(\mathbf{X}), \quad \mathrm{a.s.}
+% $$
+
+
+\section{Preliminaries and Individual Calibration}
+\label{sec:prel_indiv_calib}
+
+\textbf{Notations.} For a positive integer $K$, write $[K]\coloneqq\{1,\dots,K\}$.
+Let $\mathcal{I}([0,1])$ denote the set of all closed subintervals of $[0,1]$.
+For a measurable space $\mathcal E$, let $\mathcal P(\mathcal E)$ denote the set of probability measures on $\mathcal E$.
+For two measurable spaces $\mathcal E_1,\mathcal E_2$, let $\mathcal F(\mathcal E_1,\mathcal E_2)$ denote
+the set of measurable functions from $\mathcal E_1$ to $\mathcal E_2$.
+For $P\in\mathcal P(\mathcal X\times\mathcal Y)$, we write $P_X$ for its marginal on $\mathcal X$.
+We say $P_X$ is \emph{nonatomic} if $P_X(\{\mathbf{x}\})=0$ for all $\mathbf{x}\in\mathcal X$.
+We write $\mathrm{leb}(\cdot)$ for Lebesgue measure on $\mathbb R$.
+
+\subsection{Preliminaries}
+
+Let $\mathcal{X}\subseteq\mathbb{R}^d$ be the input space and let $\mathcal{Y}=[K]$ be the label space.
+Let $f\in\mathcal{F}(\mathcal{X},\mathcal{Y})$ be a pre-trained classifier and let $P\in\mathcal{P}(\mathcal{X}\times\mathcal{Y})$ be the (unknown) deployment distribution. We denote by $E = \mathds{1}\{ Y \neq f(X)\}$ the random variable representing the occurrence of an error.
+
+Reliable uncertainty quantification for misclassification detection (MisD) should produce an uncertainty score $u\in\mathcal{F}(\mathcal{X},[0,1])$ that is both
+(i) \emph{discriminative} for predicting the occurrence of an error $E$, and
+(ii) \emph{interpretable} as an error probability with \textit{certified guarantees}.
+While much of the MisD literature focuses on discriminative scores, our emphasis is on the second objective. In particular, we study post-hoc calibration (or \emph{recalibration}) of an existing uncertainty score with provable guarantees. As we will see, the framework encompassis also the \text{testability} of calibration guarantee of a given uncertainty score.
+
+
+Concretely, we study \emph{post-hoc calibration} (or \emph{recalibration}) of an existing uncertainty score $u \in \mathcal{F}(\mathcal{X}, \mathbb{R})$ for a classifier $f$:
+given a calibration sample $\mathcal{D}_n\sim P^n$, a calibrator is a (possibly randomized) mapping
+\[
+C:\ (u,\mathcal{D}_n)\ \longmapsto\ \widehat u(\cdot ; \mathcal{D}_n),
+\] outputting a transformed score $\widehat{u}_n = \widehat u(\cdot ; \mathcal{D}_n)$ together with a data-dependent \textit{approximation level} $\epsilon_n = \epsilon( \cdot ; \mathcal{D}_n)$ quantifying how close 
+$\widehat u_n$ is to calibration.
+
+% Importantly, this viewpoint also captures \emph{testability}: by allowing the calibrator to output 
+% $\widehat u_n \equiv u$ (i.e.\ no transformation), any such certificate becomes a distribution-free audit of 
+% the calibration quality of a \emph{given} score.
+
+
+% In this setting, both the classifier $f$ and the score $u$ may be arbitrary. We are given a calibration dataset $\mathcal{D}_n=\{(X_i,Y_i)\}_{i=1}^n$ of size $n\in\mathbb{N}^*$ drawn i.i.d.\ from $P$.
+% Our goal is to design a \emph{calibrator}, i.e., a (possibly randomized) mapping
+% \[
+% C:\ (u,f,\mathcal{D}_n)\ \longmapsto\ \widehat u_{f,u}(\cdot ; \mathcal{D}_n),
+% \]
+% that transforms $u$ into a calibrated uncertainty score $\widehat u_{f,u}(\cdot ; \mathcal{D}_n)\in\mathcal{F}(\mathcal{X},[0,1])$ with provable guarantees. To simplify the notation, We may use the notation $\widehat u_n(\cdot)= \widehat u_{f,u}(\cdot ; \mathcal{D}_n)$ when its clear from context.
+
+In the remainder of this section, we first discuss the most demanding notion of calibration, namely \emph{individual calibration} (Section~\ref{sec:indiv_calib}).
+We then prove a new quantitative impossibility result for individual calibration in the distribution-free setting (Section~\ref{sec:impossibility_indiv_calib}).
+Finally, we show that common relaxations based on regularity assumptions on the data distribution are generally not suitable for uncertainty quantification, except in degenerate cases (Section~\ref{sec:smooth_relaxation}).
+
+\subsection{Individual Calibration}
+\label{sec:indiv_calib}
+Individual calibration \cite{zhao_individual_2020, rina2020inference} is the most demanding notion of calibration. Formally, an uncertainty score $u \in \mathcal{F}(\mathcal{X}, [0,1])$ is \textit{individually calibrated} if the following holds:
+$$
+P(E=1 \mid \mathbf{X}) = u(\mathbf{X}), \quad \mathrm{a.s.}
+$$
+
+In words, $u$ is individually calibrated if it is equal to the \textit{oracle} uncertainty score. Therefore, this notion captures both the discriminativeness and interpretability of an uncertainty score. Without strong assumptions, individual calibration is known to be infeasible. However, it is still important to give quantitative statements about this impossibility.
+
+We desire a framework to make transparent claims about how close a transformed score $\widehat{u}_n$ is to being individually calibrated.
+In Definition~\ref{def:indiv_calib} we define calibrators $C$ that provide \textit{probably approximate individual calibration} for a pointwise level of approximation $\epsilon(\cdot; f,u ,\mathcal D_n): \mathcal{X}\to [0,1]$ and failure probability $\alpha \in (0,1)$.
+
+\begin{definition}[Individual Calibration]
+\label{def:indiv_calib}
+Let $f\in\mathcal F(\mathcal X,\mathcal Y)$ be a classifier and $u \in \mathcal{F}(\mathcal{X}, [0,1])$ be an uncertainty score. We say that a calibrator $C: (u,\mathcal{D}_n)\to \widehat{u}_n$ provides $(\epsilon, \alpha)$-individual calibration w.r.t. $(f,u)$ if for any distributions
+$P\in\mathcal P(\mathcal X\times\mathcal Y)$ and $P_X$-a.e. $\mathbf{x}$, with probability $1-\alpha$ over $\mathcal{D}_n \sim P^n$ we have
+\begin{equation}
+\label{eq:indiv_calib}
+\big|P(E=1 \mid \mathbf{X}=\mathbf{x}) - \widehat{u}_n(\mathbf{x})\big| \leq \epsilon(\mathbf{x}; \mathcal{D}_n) 
+\end{equation}
+for $P_X$-a.e.\ $\mathbf{x}$, where $E= \mathds{1}\{ Y \neq f(X)\}$.
+\end{definition}
+
+In Definition~\ref{def:indiv_calib}, the calibration error is required to be controlled \emph{conditionally} on the test point, in the sense that, for $P_X$-a.e.\ test input $\mathbf{x}\in\mathcal X$, the bound in~\eqref{eq:indiv_calib} holds with probability at least $1-\alpha$ over the calibration sample $\mathcal D_n\sim P^n$. This requirement is stronger than in \cite{zhao_individual_2020, barber2020limitsdistributionfreeconditionalpredictive}, where the guarantee is imposed only \emph{on average} over a random test point $\mathbf{X}\sim P_X$. 
+
+\subsection{Impossibility of Individual Calibration}
+\label{sec:impossibility_indiv_calib}
+
+As noticed in the last section, individual calibration requires estimating the conditional probability $P(E=1 \mid \mathbf{X})$. In the distribution-free setting, this is 
+intrinsically challenging, since it amounts to learning a Bernoulli success probability \emph{separately for each} $\mathbf{x}$.
+Indeed, conditionally on $\mathbf{X}=\mathbf{x}$, the error indicator $E$ is Bernoulli with parameter $P(E=1 \mid \mathbf{X}=\mathbf{x})$.
+Without further regularity assumptions on the regression function
+$$
+\mathbf{x} \mapsto P(E=1\mid \mathbf{X} =\mathbf{x}),
+$$
+these estimation problems are unrelated across different inputs and must be solved independently.
+Consequently, the level of approximation $\epsilon(\mathbf{x}, \mathcal{D}_n)$ of any $(\epsilon, \alpha)$-individually calibrated score $\widehat{u}_n$ at a fixed input $\mathbf{x}\in\mathcal X$ depends on
+\[
+N_{\mathbf{x}} \;\coloneqq\; \sum_{i=1}^n \mathds{1}\{\mathbf{X}_i=\mathbf{x}\},
+\]
+the (random) number of calibration samples $(\mathbf{X}_i,Y_i)$ that fall exactly at $\mathbf{x}$. However, if the singleton $\{\mathbf{x}\}$ has zero mass, $N_\mathbf{x} = 0$ almost surely. This intuition is formalized in Theorem~\ref{thm:indiv_calib_imp} below and the proof is deferred to Appendix~\ref{anex:pointwise_imp}.
+
+\begin{restatable}[]{theorem}{ImpossibilityCond}
+\label{thm:indiv_calib_imp}
+Let $f\in\mathcal F(\mathcal X,\mathcal Y)$ be a classifier and $u \in \mathcal{F}(\mathcal{X}, [0,1])$ be an uncertainty score. Let $C$ be a calibrator providing $(\epsilon, \alpha)$-individual calibration w.r.t $(f,u)$. Then for any distribution $P\in \mathcal{P}(\mathcal{X} \times \mathcal{Y})$ and any input point $\mathbf{x} \in \mathcal{X}$, if $P_X(\{\mathbf{x}\})=0$ then the following holds:
+\begin{equation}
+\label{eq:expected_length_lb}
+\mathbb{E}_{P^n}[\epsilon(\mathbf{x}; \mathcal{D}_n)] \ge\ \frac{1-\alpha}{2}.
+\end{equation}
+
+\end{restatable}
+
+The lower bound in Theorem~\ref{thm:indiv_calib_imp} says that any $(\epsilon,\alpha)$-individual calibrator $C$ must provide a meaningless level of approximation $\epsilon_n(\mathbf{x})$ at \textit{any} input $\mathbf{x} \in \mathcal{X}$ with null mass. In particular, for distributions $P$ with non-atomic marginal $P_X$, the bound forces $\epsilon_n(\mathbf{x})$ to be trivial for any $\mathbf{x}$. This impossibility result is analogous to the one of \citep{rina2020inference} for our \textit{conditional} definition of individual calibration (Definition~\ref{def:indiv_calib}).
+
+\subsection{Can we relax distribution-free requirements ?}
+\label{sec:smooth_relaxation}
+
+A natural attempt to restore feasibility is to make additional assumption about the data distribution $P$. In nonparametric regression, for example, if the regression function is assumed to lie in a smoothness class (e.g., \(\beta\)-Hölder),
+then observations can be pooled across nearby inputs, and precise estimation becomes possible at minimax-optimal rates.
+In this section, we examine whether such a relaxation is applicable in our setting by studying the regularity of the function $\mathbf{x} \mapsto \mathbb{P}(E=1 \mid \mathbf{X} = \mathbf{x})$. For simplicity, we use the notation $\eta_{f,P} \in \mathcal{F}(\mathcal{X}, [0,1])$ for the latter.
+
+We ask: \emph{under what assumptions on the classifier \(f\) and the data distribution \(P\) can \(\eta_{f,P}\) be smooth?}
+An important observation is that on any region where \(f\) is constant---say \(f(\mathbf{x})=y\)---the regularity of \(\eta_{f,P}\)
+is inherited from that of the conditional label probability \(\pi_y :\mathbf{x}\mapsto \mathbb{P}(Y=y\mid \mathbf{X}=\mathbf{x})\).
+Formally, for each \(y\in\mathcal Y\) define the level set
+\[
+A_y \coloneqq \{\mathbf{x} \in\mathcal X:\ f(\mathbf{\mathbf{x}})=y\}.
+\]
+Then, for \(P_X\)-a.e.\ \(\mathbf{x}\in A_y\),
+\[
+\eta_{f,P}(\mathbf{x}) \;=\; \mathbb{P}(Y\neq y \mid \mathbf{X}=\mathbf{x})
+\;=\; 1 - \pi_y(\mathbf{x}).
+\]
+Consequently, if the conditional label probabilities $\pi_y$ admit smooth versions,
+then \(\eta_{f,P}\) inherits the same regularity on the interior of each region \(A_y\).
+The situation is more delicate on \emph{decision boundaries} \(\partial A_y\), where \(f\) changes its prediction and
+irregularities may arise. In fact, Proposition~\ref{prop:proba_error_smoothness} shows that in the binary case,
+even when $\pi_y$ is continuous, \(\eta_{f,P}\) typically exhibits boundary discontinuities, except in
+degenerate cases. The proof is deferred to Appendix~\ref{anex:smooth}.
+
+\begin{restatable}[]{proposition}{EtaSmooth}
+\label{prop:proba_error_smoothness}
+Let $\mathcal{Y}= \{0,1\}$ and let $f \in \mathcal{F}(\mathcal{X}, \mathcal{Y})$ be a classifier.
+Let $P \in \mathcal{P}(\mathcal{X} \times \mathcal{Y})$ and assume there exists a continuous function
+$\pi\in \mathcal{F}(\mathcal{X}, [0,1])$ such that
+\[
+\pi(x)=\mathbb{P}(Y=1\mid \mathbf{X}=\mathbf{x}),\qquad P_X\text{-a.e. } x.
+\]
+Define $\eta\in \mathcal{F}(\mathcal X,[0,1])$ by
+\[
+\eta(x)\coloneqq
+\begin{cases}
+\pi(\mathbf{x}), & f(\mathbf{x})=0,\\
+1-\pi(\mathbf{x}), & f(\mathbf{x})=1,
+\end{cases}
+\]
+so that $\eta(\mathbf{x})=\mathbb{P}(E=1\mid \mathbf{X}=\mathbf{x})$ for $P_X$-a.e.\ $x$, where $E=\mathds 1\{Y\neq f(\mathbf{X})\}$.
+For $y\in\mathcal{Y}$, let $A_y\coloneqq\{\mathbf{x} \in\mathcal{X}: f(\mathbf{x})=y\}$.
+Then $\partial A_1=\partial A_0$, and for any $\tilde{\mathbf{x}}\in\partial A_1$,
+\[
+\eta \text{ is continuous at }\tilde{\mathbf{x}}
+\quad\Longleftrightarrow\quad
+\pi(\tilde{\mathbf{x}})=\tfrac{1}{2}.
+\]
+\end{restatable}
+
+One interpretation of Proposition~\ref{prop:proba_error_smoothness} is that continuity of $\eta_{f,P}$ at a
+decision boundary point $\tilde{\mathbf{x}}$ can only occur if $\mathbf{x}$ lies in the region where the Bayes classifier is indifferent between the two labels indifference set, \textit{i.e.},
+$\{\mathbf{x}:\pi(\mathbf{x})=1/2\}$.
+Thus, assuming smoothness of the \emph{label regression function} alone does not generally guarantee smoothness of
+\(\eta_{f,P}\); additional restrictions on how \(f\) places its decision boundary would be required, which is too limiting
+for our purposes.
+
+\section{Uncertainty Score Calibration}
+\label{sec:score_calibration}
+Meaningful guarantees for individual calibration are infeasible in the distribution-free regime. Consequently, we restrict attention to the standard (marginal) notion of calibration. Section~\ref{sec:calibration_intro} introduces the definition and formalizes \emph{simultaneous} calibration guarantees. Section~\ref{sec:calib_algo} motivates score discretization as a way to recover nontrivial distribution-free guarantees. In particular, we use the uniform-mass calibrator of \cite{gupta_distribution-free_2021} and restate its guarantee in Theorem~\ref{thm:unif-mass_calibration}. Section~\ref{sec:minimax} then establishes, via minimax lower bounds, that the rate in Theorem~\ref{thm:unif-mass_calibration} is optimal within the class of calibrators based on equal-mass binning.
+
+\subsection{Uncertainty Calibration}
+\label{sec:calibration_intro}
+
+A relaxation of individual calibration that is the main standard in the litterature is the following. An uncertainty score $u$ is \textit{calibrated} if
+\begin{equation}
+    \label{eq:calibration}
+    P(E=1 \mid u(\mathbf{X})) = u(\mathbf{X}).
+\end{equation}
+In words, whenever $u$ predicts for example $30\%$, then $30\%$ of the time the model $f$ makes a mistake. In this sense a calibrated forecast is interpretable: it represents a true failure probability. However, in contrast with individual calibration, a calibrated uncertainty score is not necessarily discriminative. A typical example is the score that returns the prior error probability: $u(\mathbf{x}) \coloneqq P(E=1)$.  This score is calibrated, however it is independant of the input $\mathbf{x}$ and therefore is not discriminative. Overall, a calibrated score does not take into acount the potential risk variablity within the points $\mathbf{x}$ that have same uncertainty prediction $u(\mathbf{x})$. This is what differs from individual calibration and why in this context, discriminativness and interpretability are complementaries properties. 
+
+
+% \textbf{Feasibility of Calibration.} While calibration \eqref{eq:calibration} is a relaxation of individual calibration, the same drawbacks can arise if the level sets of the score $\{ \mathbf{x} \in \mathcal{X}: u(\mathbf{x})=t\}$ has zero mass. In Annexes~\ref{}, we actually provide a similar impossibility result then Theorem~\ref{thm:pointwise_imp}. Therefore, in order to get non-trivial calibration guarantee, a calibrator $C$ must return transform uncertainty score which level sets have positive mass. 
+
+Similarly to Definition~\ref{def:indiv_calib}, we define calibrators $C$ that provide \textit{probably approximate calibration} for a level of approximation $\epsilon_n(\cdot): [0,1] \to [0,1]$ and failure probability $\alpha \in (0,1)$. Notice that contrary Definition~\ref{def:indiv_calib}, $\epsilon_n(\cdot)$ is here defined over $[0,1]$ - the range for an \textit{interpretable} uncertainty score - rather than on the input space $\mathcal{X}$.  
+
+
+\begin{definition}[Calibration]
+\label{def:calibration}
+Let $f\in\mathcal F(\mathcal X,\mathcal Y)$ be a classifier and $u \in \mathcal{F}(\mathcal{X}, [0,1])$ be an uncertainty score. We say that a calibrator $C: (u,  \mathcal{D}_n)\to \widehat{u}_n$ provides $(\epsilon,\alpha)$-calibration w.r.t. $(f,u)$ if for any distributions
+$P\in\mathcal P(\mathcal X\times\mathcal Y)$,
+with probability at least $1-\alpha$ over $\mathcal D_n\sim P^n$, inequality \eqref{eq:calib} holds for $P_{\widehat u_n(\mathbf X)\mid \mathcal D_n}$-a.e $t$\footnote{The notation $P_{\widehat u_n(\mathbf X)\mid \mathcal D_n}$ denotes the distribution of the transformed score $ \widehat{u}_n(\mathbf{X})= \widehat u(\mathbf X; \mathcal{D}_n)$ when the calibration set $\mathcal{D}_n$ is fixed. Therefore, the only randomness comes from an independent test point $\mathbf{X} \sim P_X$.}:
+\begin{equation}
+\label{eq:calib}
+\big|\mathbb P[E=1\mid \widehat{u}_n (\mathbf{X})=t,\ \mathcal D_n] - t\big|
+\le \epsilon_n(t).
+\end{equation}
+
+\paragraph{Simultaneous vs conditional calibration.}
+Unlike Definition~\ref{def:indiv_calib}, which requires a \textit{conditional} guarantee with respect to the test input $\mathbf{x}$, the requirement in Definition~\ref{def:calibration} is \emph{simultaneous} over the values of the transformed score $\widehat{u}_n$: for a fixed calibration set $\mathcal D_n$, the inequality \eqref{eq:calib} must hold for (almost) all values of the score $\widehat u(\mathbf X)$ at once.  
+
+% A conditional statement would be: for (almost) all values of $\widehat u_{f,u}(\mathbf X; \mathcal{D}_n)$ the inequality \eqref{eq:calib} must hold with probability $1-\alpha$ over $\mathcal{D}_n \sim P^n$. However, since the distribution of $\widehat u_{f,u}(\mathbf X; \mathcal{D}_n)$ depends on the realized calibration set $\mathcal{D}_n$, such a formulation is ill-posed.
+
+\paragraph{Simultaneous vs marginal calibration.}
+A different road is to consider the weaker notion of \textit{marginal} calibration as in \citep{gupta_distribution-free_2021, gupta2022distributionfreebinaryclassificationprediction}, where the calibration error is controlled only \textit{on average} over the distribution of $\widehat u_n(\mathbf X)$. Such an average guarantee does not preclude large calibration errors on a subset of score values, which may be undesirable in safety-critical applications.
+ 
+
+% Moreover, we say that $C: (u,f,  \mathcal{D}_n)\to \widehat{u}_n$ is $(\epsilon,\alpha)$-calibrated simultaneously if for any $u \in \mathcal{F}(\mathcal{X}, [0,1])$ and every
+% $P\in\mathcal P(\mathcal X\times\mathcal Y)$
+% \begin{equation}
+% \label{eq:indiv_calib}
+% P^n\!\Big( \big \lVert P(E=1 \mid \widehat{u}_n(\mathbf{x})=t) - t\big \rVert_{L_\infty(\widehat{u}_n(\mathbf{X}))} \leq \epsilon(\mathcal{D}_n) \Big)\ \ge\ 1-\alpha, 
+% \end{equation}
+% $\epsilon(\mathcal{D}_n)$ is an approximation level.
+\end{definition}
+
+\subsection{Calibration algorithm}
+\label{sec:calib_algo}
+
+As already pointed in the literature \cite{gupta2022distributionfreebinaryclassificationprediction}, in order to get meaningful values calibration guarantees (\textit{i.e.} values of $\epsilon_n$), the transformed score $\widehat{u}_n$ should necessary produce only discrete prediction. This is typically not the case for calibrator that returns score with continuous range (e.g. Plat scaling~\cite{plat_scaling} and temperature scaling~\cite{guo2017calibrationmodernneuralnetworks}). For these reason, we propose to use the uniform-mass calibrator proposed by \citep{gupta_distribution-free_2021} that essentially consists in i) partitioning the values of the score $u$ into $B$ bins with same number of calibration points and ii) defining the value of $\widehat{u}_n$ in each bin as the empirical mean error in the bin. We provide a detail presentation in Appendix~\ref{}. In Theorem~\ref{thm:unif-mass_calibration} below,  we restate the calibration guarantees of this algorithm.
+
+% As pointed in last section, in order to get non-trivial calibration guarantee, a calibrator $C$ must return a score $\widehat{u}_n$ which level sets have positive mass. This is typically not the case for calibrator that returns score with continuous range (e.g. Plat scaling~\cite{plat_scaling} and temperature scaling~\cite{guo2017calibrationmodernneuralnetworks}). Indeed, if $\widehat{u}_n$ has continuous range, then some of its level sets must have zero mass. Therefore, to get non-trivial calibration guarantee, one must consider calibrator $C$ that returns score $\widehat{u}_n$ with discrete predictions. Building upon the work of \cite{gupta_distribution-free_2021} we propose to use the uniform-mass calibrator that enjoys builtin calibration guarantee. We present the algorithm in Annexes~\ref{}. Below we restat the result of \cite{gupta_distribution-free_2021}
+
+\begin{restatable}[Restated \cite{gupta_distribution-free_2021}]{theorem}{GroupCoverageUMD}
+\label{thm:unif-mass_calibration}
+Let $f \in \mathcal{F}(\mathcal{X},\mathcal{Y})$ and $\alpha\in(0,1)$. Let $B\in\mathbb N$ and assume $n\ge 2B$. Then the uniform-mass calibrator is $(\epsilon, \alpha)$-calibrated with
+$$
+\epsilon_n = \sqrt{\frac{\log(2B/\alpha)}{2 (\lfloor n+1/B \rfloor -1)}}.
+$$
+\end{restatable}
+
+\subsection{Minimax lower bound}
+\label{sec:minimax}
+
+Through the lens of minimax theory, we show that the calibration rate in
+Theorem~\ref{thm:unif-mass_calibration} achieved by the uniform-mass calibrator is optimal.
+We restrict attention to calibrators that \emph{discretize the original score $u$} into $B$ bins $A_b$ ($b \in [B]$)
+of equal $P_X$-mass and then output a score that is constant on each bin. In this regime, the
+problem reduces to estimating, in each bin $A_b$, the conditional error probability
+$\mathbb{P}(E=1 \mid u(\mathbf{X}) \in A_b)$ from $\mathcal{D}_n$, and our minimax lower bound
+characterizes the best achievable estimation rate.
+
+
+\paragraph{Uniform-mass discretizing calibrators.} For simplicity, we consider scores $u \in \mathcal{F}(\mathcal{X}, [0,1])$ which range contains a sub-interval of $[0,1]$ and denote by $\mathcal{P}_u$ the set of distributions for which $P_{u(\mathbf{X})}$ is non-atomic\footnote{Our assumption on the score $u$ is sufficient for $\mathcal{P}_u$ to be not empty (see~\cite{gupta2022distributionfreebinaryclassificationprediction}[Lemma 8]}.
+Fix $B\ge 2$. We denote by $\mathcal C_{B,n}$ the set of calibrators $C$ such that for any
+$P\in\mathcal P_u$ and any $\mathcal D_n\sim P^n$, the output
+$\widehat u_n = C(u,f,\mathcal D_n)$ satisfies: there exists a partition
+$\{A_b\}_{b=1}^B$ of $\mathbb R$ (depending on $P$ only through $P_{u(\mathbf X)}$)
+and (data-dependent) values $\{t_{b,n}\}_{b=1}^B\subset[0,1]$ such that
+\[
+\widehat u_n(\mathbf x)= t_{b,n}\quad\text{whenever }u(\mathbf x)\in A_b,
+\]
+and each bin has uniform mass
+\[
+P_{u(\mathbf X)}\!\big(A_b\big)=\frac{1}{B},\qquad b\in[B].
+\]
+An explicit construction of such a partition, e.g. via equal-mass cutpoints of $P_{u(\mathbf X)}$,
+is given in Appendix~\ref{app:uniform_mass_binning}. Therefore the set $\mathcal C_{B,n}$ is not empty.
+
+We then define $\mathcal{C}_{B,n,\alpha}$ as the subset of $\mathcal{C}_{B,n}$ consisting of calibrators
+that satisfy $(\epsilon,\alpha)$-calibration in the sense of Definition~\ref{def:calibration}.
+
+\paragraph{Minimax risk.}
+We study the minimum approximation level over $\mathcal{C}_{B,n,\alpha}$:
+\begin{equation}
+\label{eq:my_minimax_risk_def}
+\epsilon^*_{n,B,\alpha}
+\;\coloneqq\;
+\inf_{C \in \mathcal{C}_{B,n,\alpha}}
+\sup_{P\in\mathcal P}
+\mathbb{E}_{P^n}\!\big[|\epsilon_n|\big],
+\end{equation}
+where $|\epsilon_n| \coloneqq \max_{t \in \widehat{u}_n(\mathcal{X})} \epsilon_n(t).$
+
+\begin{restatable}[]{theorem}{Minimax}
+\label{thm:minmax}
+Let $f \in \mathcal{F}(\mathcal{X}, \mathcal{Y})$ be a classifier and let $u \in \mathcal{F}(\mathcal{X}, [0,1])$ be an uncertainty score which range contains a sub-interval of $[0,1]$. If $B>2^{2/(1-\alpha)}$, then
+\[
+\epsilon^*_{n,B,\alpha} \ge c_\alpha \min\Big\{1,\sqrt{\tfrac{B\log B}{n}}\Big\},
+\]
+where $\epsilon^*_{n,B,\alpha}$ is defined in \eqref{eq:my_minimax_risk_def} and $c_\alpha>0$ is a constant decreasing in $\alpha$.
+\end{restatable}
+
+
+
+
+\section{Experiments}
+\label{sec:experiments}
+
+In the experiments, we apply the proposed post-hoc 
+We conduct extensive experiments on standard vision and natural-language benchmarks, in order to show that one can obtain uncertainty scores uncertainty scores that remain strongly discriminative for error detection while being interpretable with certified guarantees. Concretely, for different models for text classification and image classification, we implement existing uncertainty scores and apply the post-hoc calibration procedure discussed in Section~\ref{sec:calib_algo}. 
+\subsection{Metrics}
+
+To measure the discriminative performance of an uncertainty score for misclassification detection (MisD), we report the area under the ROC curve (AUROC~$\uparrow$). To measure calibration, we report the Expected Calibration Error (ECE) and the Maximum Calibration Error (MCE). For an uncertainty score $u$ taking discrete values $u(\mathcal{X})=\{t_1,\dots,t_T\}$, and for an empirical distribution $\hat P$, we define
+\begin{align*}
+    \mathrm{ECE}(u)
+&:= \mathbb{E}_{\hat P_X}\!\left[\left|\hat P\!\left(E=1 \mid u(\mathbf X)\right) - u(\mathbf X)\right|\right] 
+\end{align*}
+and
+\[
+\mathrm{MCE}(u)
+:= \max_{t \in u(\mathcal{X})}
+\left|\hat P\!\left(E=1 \mid u(\mathbf X)=t\right) - t\right|.
+\]
+\textbf{Remark:} For a score $u$ taking continuous values, we first discretize it using equal-mass binning. Note, however, that calibration errors computed after discretization can underestimate the true miscalibration of the underlying continuous score \citep{kumar_verified_2020}.
+\subsection{Text Classification}
+
+
+\textbf{Datasets} We consider two datasets from the GLUE benchmark \citep{wang-etal-2018-glue} that were previously use by \citep{vazhentsev_uncertainty_2022} for error detection: Microsoft Research Paraphrase Corpus (MRPC) \citep{dolan2005automatically} and Stanford Sentiment Treebank (SST-2) \citep{socher-etal-2013-recursive}. The data statistics are presented in Table~\ref{tab:dataset_stats} in Appendix~\ref{app:expe}.
+
+\textbf{Models.} We use two Transformers: the pre-trained ELECTRA model \citep{clark2020electrapretrainingtextencoders} with 110 million parameters and DeBERTa \citep{he2021debertadecodingenhancedbertdisentangled} with 138 million parameters. To adapt the models to each dataset, we add a classification head and fine-tune all the model weights on the training sets. We use the same hyperparameter values given by \citep{vazhentsev_uncertainty_2022}. 
+
+\textbf{Uncertainty scores.} We compare the baseline softmax probability (SP) score \citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution} with the Mahalanobis-distance (MD) score of \citet{vazhentsev_uncertainty_2022}. We present those methods in Appendix~\ref{app:uncertainty_scores}.
+
+\subsection{Image Classification}
+
+\textbf{Datasets \& Models.}
+We consider \textit{CIFAR-10}~\cite{Krizhevsky2009LearningML}, \textit{CIFAR-100}~\cite{Krizhevsky2009LearningML}, and \textit{ImageNet-1K}~\cite{imagenet}. The numbers of classes are 10, 100, and 1000, respectively. For CIFAR-10/100 we use the standard test splits (each of size \(10\mathrm{k}\)); for ImageNet-1K we use the standard validation split (50\(\mathrm{k}\) images).
+
+\textbf{Models.}
+We evaluate four architectures: DenseNet-121, ResNet-34, ViT-B/16, and ViT-Tiny/16.
+To reduce compute and energy usage and to enhance reproducibility, we rely on publicly
+available pretrained weights: for DenseNet-121 and ResNet-34 we use the models released
+by \citet{dadalto2024datadrivenmeasurerelativeuncertainty}; for ViT-B/16 and ViT-Tiny/16
+we use the \texttt{timm} releases (\texttt{vit\_base\_patch16\_224} and
+\texttt{vit\_tiny\_patch16\_224}, respectively)~\citep{rw2019timm}.
+
+\textbf{Uncertainty scores.}
+We consider three widely used misclassification detection (MisD) scores: ODIN~\citep{liang2020enhancingreliabilityoutofdistributionimage} (a modification of the softmax-probability (SP) baseline), Doctor~\citep{granese2021doctorsimplemethoddetecting}, and the margin score~\citep{settles2009active}. We describe these methods in Appendix~\ref{app:uncertainty_scores}.
+
+\subsection{Results.}
+
+\input{tables/nlp_results}
+
+\section{Summary and Future works}
+We studied the constructionn of uncertainty score that are both discriminative for misclassifcation detection and which enjoy calibration guarantees. 
+
+
+Future work includes tightening the certificates via sharper one-sided binomial bounds (e.g., Clopper--Pearson, empirical-Bernstein-type intervals, Sterne-type exact intervals, Blaker’s). This could include modifying the uniform-mass quantization by rather adapting the number of samples in each bin depending on the apriori difficulty of Bernoulli estimation. This apriori would depend both on the performance of the classifier, and how the used uncertainty scores is assumed to approximate the error probability. 
+
+\paragraph{Impact Statement}
+This paper presents work whose goal is to advance the field of Machine Learning. There are many potential societal
+consequences of our work, none which we feel must be specifically highlighted here.
+
+
+\bibliography{main}
+\bibliographystyle{icml2026}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% APPENDIX
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\appendix
+\onecolumn
+\section{Supplementary for Section \ref{sec:prel_indiv_calib}}
+
+
+\subsection{Proof of Theorem \ref{thm:indiv_calib_imp}}
+\label{anex:pointwise_imp}
+
+\begin{lemma}[Lifting a conditional error model to a joint law on $(\mathbf{X},Y)$]
+\label{lem:lifting_XE_to_XY}
+Let $\mathcal X\subseteq\mathbb R^d$ be endowed with its Borel $\sigma$-algebra, and let $\mathcal Y=[K]=\{1,\dots,K\}$ with $K\ge 2$.
+Let $f:\mathcal X\to [K]$ be Borel-measurable, and let $Q\in\mathcal P(\mathcal X\times\{0,1\})$.
+Then there exists $P\in\mathcal P(\mathcal X\times[K])$ such that, if $(\mathbf{X},Y)\sim P$ and
+\[
+E \coloneqq \mathds 1\{Y\neq f(\mathbf{X})\},
+\]
+the joint distribution of $(\mathbf{X},E)$ under $P$ equals $Q$, i.e.\ $P_{\mathbf{X},E}=Q$.
+\end{lemma}
+
+\begin{proof}
+Let $Q_{\mathbf{X}}$ be the $\mathbf{X}$-marginal of $Q$. Since $\mathcal X$ is a Borel subset of $\mathbb R^d$, a regular conditional probability exists; let
+\[
+\eta(\mathbf{x})\coloneqq Q(E=1\mid \mathbf{X}=\mathbf{x})
+\]
+be a Borel-measurable version.
+
+For each $\mathbf{x}\in\mathcal X$, define a probability mass function $r_{\mathbf{x}}$ on $[K]$ by
+\[
+r_{\mathbf{x}}(y)\;=\;
+\begin{cases}
+1-\eta(\mathbf{x}), & y=f(\mathbf{x}),\\[3pt]
+\displaystyle \frac{\eta(\mathbf{x})}{K-1}, & y\neq f(\mathbf{x}).
+\end{cases}
+\]
+Then $r_{\mathbf{x}}(y)\ge 0$ and $\sum_{y=1}^K r_{\mathbf{x}}(y)=1$ for every $\mathbf{x}$.
+Moreover, for each fixed $y\in[K]$, the map $\mathbf{x}\mapsto r_{\mathbf{x}}(y)$ is Borel-measurable because $\mathbf{x}\mapsto \eta(\mathbf{x})$ and $\mathbf{x}\mapsto f(\mathbf{x})$ are Borel and $[K]$ is finite. Hence $\mathbf{x}\mapsto r_{\mathbf{x}}(B)\coloneqq \sum_{y\in B} r_{\mathbf{x}}(y)$ is Borel-measurable for every $B\subseteq[K]$, so $\mathbf{x}\mapsto r_{\mathbf{x}}(\cdot)$ defines a Markov kernel from $\mathcal X$ to $[K]$.
+
+Define a probability measure $P$ on $\mathcal X\times[K]$ by the kernel construction: for every Borel $A\subseteq\mathcal X$ and every $B\subseteq[K]$,
+\[
+P(A\times B)\;\coloneqq\;\int_A r_{\mathbf{x}}(B)\, dQ_{\mathbf{X}}(\mathbf{x}).
+\]
+Then $P_{\mathbf{X}}=Q_{\mathbf{X}}$ by construction.
+
+Let $A\subseteq\mathcal X$ be Borel. Under $P$, conditional on $\mathbf{X}=\mathbf{x}$ we have
+\[
+P(E=1\mid \mathbf{X}=\mathbf{x})
+= P\big(Y\neq f(\mathbf{x})\mid \mathbf{X}=\mathbf{x}\big)
+= \sum_{y\neq f(\mathbf{x})} r_{\mathbf{x}}(y)
+= \eta(\mathbf{x}),
+\]
+and similarly $P(E=0\mid \mathbf{X}=\mathbf{x})=1-\eta(\mathbf{x})$. Therefore,
+\[
+P(\mathbf{X}\in A,\,E=1)
+= \int_A P(E=1\mid \mathbf{X}=\mathbf{x})\, dP_{\mathbf{X}}(\mathbf{x})
+= \int_A \eta(\mathbf{x})\, dQ_{\mathbf{X}}(\mathbf{x}),
+\]
+and likewise
+\[
+P(\mathbf{X}\in A,\,E=0)
+= \int_A (1-\eta(\mathbf{x}))\, dQ_{\mathbf{X}}(\mathbf{x}).
+\]
+Since $\eta$ is a version of $Q(E=1\mid \mathbf{X}=\cdot)$, for all Borel $A\subseteq\mathcal X$,
+\[
+Q(A\times\{1\})=\int_A \eta(\mathbf{x})\, dQ_{\mathbf{X}}(\mathbf{x}),
+\qquad
+Q(A\times\{0\})=\int_A (1-\eta(\mathbf{x}))\, dQ_{\mathbf{X}}(\mathbf{x}).
+\]
+Hence, for all Borel $A\subseteq\mathcal X$ and $e\in\{0,1\}$,
+\[
+P(\mathbf{X}\in A,\,E=e)=Q(\mathbf{X}\in A,\,E=e),
+\]
+which implies $P_{\mathbf{X},E}=Q$.
+\end{proof}
+
+\ImpossibilityCond*
+\begin{proof}
+Let $f \in \mathcal{F}(\mathcal{X}, \mathcal{Y})$  be a classifier and $u \in \mathcal{F}(\mathcal{X}, [0,1])$  be an uncertainty score. Consider an $(\epsilon, \alpha)$-individual calibrator with respect to $(f,u)$. Let $P \in \mathcal{P}(\mathcal{X} \times \mathcal{Y})$ be a data distribution and fix an arbitrary input $\mathbf{x}\in\mathcal X$ with null mass, \textit{i.e.} $P_X(\{\mathbf{x}\})=0$. For any $t\in[0,1]$ and $\varepsilon\in(0,1)$, define the contaminated distribution $Q_{X,E} \in \mathcal{P}(\mathcal{X} \times \{0,1\})$ by:
+\[
+Q_{XE}^{(\epsilon, t)} \;\coloneqq\; (1-\varepsilon)\,P_{XE}\;+\;\varepsilon\,(\delta_{\mathbf{x}}\otimes \mathrm{Bern}(t)).
+\]
+Using Lemma~\ref{lem:lifting_XE_to_XY}, we denote by $Q^{(\epsilon, t)} \in \mathcal{P}(\mathcal{X} \times \mathcal{Y})$ the distribution that induces $Q_{XE}^{(\epsilon, t)}$. 
+
+As $C$ provides $(\epsilon, \alpha)$-indivudal calibration, in particular for 
+$Q^{(\epsilon, t)}_X$-a.e. $\Tilde{\mathbf{x}}$, with probability $1-\alpha$ over $\mathcal{D}^Q_n \sim (Q^{(\epsilon, t)})^n$ we have
+\begin{equation}
+\label{eq:indiv_calib_imp_1}
+\big|Q^{(\epsilon, t)}(E=1 \mid \mathbf{X}=\Tilde{\mathbf{x}}) - \widehat{u}_n(\Tilde{\mathbf{x}}; \mathcal{D}_n^Q)\big| \leq \epsilon(\Tilde{\mathbf{x}}; \mathcal{D}^Q_n).
+\end{equation}
+For clarity, we denote by $A_{\Tilde{\mathbf{x}},\epsilon, t} \subset (\mathcal{X} \times \mathcal{Y})^n$ the event in Equation~\eqref{eq:indiv_calib_imp_1}, \textit{i.e.},
+$$
+A_{\Tilde{\mathbf{x}}, t, \epsilon} \coloneqq \Big\{ z_{1:n} \in \mathcal{Z}^n
+: \big|Q^{(\epsilon, t)}(E=1 \mid \mathbf{X}=\Tilde{\mathbf{x}}) - \widehat{u}(\Tilde{\mathbf{x}}; z_{1:n})\big| \leq \epsilon(\Tilde{\mathbf{x}}; z_{1:n}) \Big \}.$$
+We show now that actually the event $A_{\Tilde{\mathbf{x}}, t, \epsilon}$ does not depend on $\epsilon$. Indeed, the only dependence on $\epsilon$ in the definition of $A_{\Tilde{\mathbf{x}}, t, \epsilon}$ is through the probability of error $Q^{(\epsilon, t)}(E=1\mid \mathbf{X}=\mathbf{x})$. However, if $\Tilde{\mathbf{x}} = \mathbf{x}$, then
+\begin{equation}
+\label{eq:impo_cond_1_corrected}
+Q^{(\epsilon, t)}(E=1\mid \mathbf{X}=\mathbf{x})
+\;=\;
+\frac{Q^{(\epsilon, t)}(E=1,\mathbf{X}=\mathbf{x})}{Q^{(\epsilon, t)}(\mathbf{X}=\mathbf{x})}
+\;=\;
+\frac{\varepsilon\,t}{\varepsilon}
+\;=\;
+t.
+\end{equation}
+Moreover, if $\Tilde{\mathbf{x}} \neq \mathbf{x}$, then 
+\begin{equation*}
+Q^{(\epsilon, t)}(E=1\mid \mathbf{X}=\Tilde{\mathbf{x}} )
+\;=\;P(E=1\mid \mathbf{X}=\Tilde{\mathbf{x}}).
+\end{equation*}
+Therefore, we know omit $\epsilon$ in the notation, \textit{i.e.}, $A_{\Tilde{\mathbf{x}}, t} = A_{\Tilde{\mathbf{x}}, t, \epsilon}$. The statement in Equation~\eqref{eq:indiv_calib_imp_1} becomes, for 
+$Q^{(\epsilon, t)}_X$-a.e. $\Tilde{\mathbf{x}}$,
+$(Q^{(\epsilon, t)})^n(A_{\Tilde{\mathbf{x}}, t}) \geq 1 - \alpha$. Actually, the equation below show that $Q_X(\{\mathbf{x}\})>0$ and therefore the statement is true for the input $\mathbf{x}$.
+\[
+Q_X^{(\epsilon, t)}(\{\mathbf{x}\}) \;=\; (1-\varepsilon)P_X(\{\mathbf{x}\})+\varepsilon \;=\; \varepsilon \;>\; 0, \quad \text{as }P_X(\{\mathbf{x}\}) =0
+\]
+Writing the statement in Equation~\eqref{eq:indiv_calib_imp_1} for the input $\mathbf{x}$ and using also Equation~\eqref{eq:impo_cond_1_corrected} we get
+\begin{align*}
+   \ 1-\alpha &\leq  (Q^{(\epsilon, t)})^n(A_{\mathbf{x}, t}) \\
+    &= (Q^{(\epsilon, t)})^n\!\Big(\big|t - \widehat{u}(\mathbf{x}; \mathcal{D}_n^Q)\big| \leq \epsilon(\mathbf{x}; \mathcal{D}^Q_n)\Big)\  \label{eq:indiv_calib_imp_2}
+\end{align*}
+% Therefore, as $Q_X(\{\mathbf{x}\})>0$, Equation~\eqref{eq:indiv_calib_imp_1} holds in particular for the input $\mathbf{x}$, \textit{i.e.},
+% $(Q^{(\epsilon, t)})^n(A_{\mathbf{x}, t, \epsilon}) \geq 1 - \alpha$.
+
+% with probability $1-\alpha$ over $\mathcal{D}^Q_n \sim Q^n$. Moreover we have
+
+% Using \eqref{eq:impo_cond_1_corrected}, Equation~\eqref{eq:indiv_calib_imp_1} applied at the point $\mathbf{x}$ gives:
+
+% \begin{equation}
+% \label{eq:cover_under_Q}
+% Q^n\!\big(\big|t - \widehat{u}_{n,Q}(\mathbf{x})\big| \leq \epsilon_{f,u}(\mathbf{x}; \mathcal{D}^Q_n)\big)\ \ge\ 1-\alpha.
+% \end{equation}
+
+Next, by the total variation inequality, for any measurable event $A \subset (\mathcal{X} \times \mathcal{Y})^n$,
+\[
+{P^n}(A)\ \ge\ {(Q^{(\epsilon,t})^n}(A)\ -\ d_{\mathrm{TV}}(P^n,(Q^{(\epsilon, t)})^n).
+\]
+Applying this with the event $A_{\mathbf{x},Q^{t, \epsilon}}$ and using \eqref{eq:indiv_calib_imp_2}, we obtain
+\[
+P^n\!\big(A_{\mathbf{x},t}\big)
+\ \ge\
+1-\alpha\ -\ d_{\mathrm{TV}}(P^n,(Q^{(\epsilon, t)})^n).
+\]
+Moreover, 
+we have $d_{\mathrm{TV}}(P,Q^{(\epsilon,t)})\le \varepsilon$, hence
+$$d_{\mathrm{TV}}(P^n,(Q^{(\epsilon, t)})^n)\le n\,d_{\mathrm{TV}}(P,Q^{(\epsilon,t)})\le n\varepsilon$$.
+Therefore,
+\[
+P^n\!\big(A_{\mathbf{x},t}\big)\ \ge\ 1-\alpha-n\varepsilon.
+\]
+Letting $\varepsilon\downarrow 0$ yields
+\begin{equation}
+\label{eq:pointwise_all_t}
+P^n\!\big(A_{\mathbf{x},t}\big)\ \ge\ 1-\alpha
+\qquad \forall\,t\in[0,1].
+\end{equation}
+
+Finally, define the induced set of admissible values
+\[
+\widehat C_n(\mathbf{x})
+\;:=\;
+\big\{t\in[0,1]: |t-\widehat u_n(\mathbf{x})|\le \epsilon(\mathbf{x};\mathcal D_n)\big\}.
+\]
+Then for every $t\in[0,1]$,
+\[
+P^n\!\big(t\in \widehat C_n(\mathbf{x})\big)
+=
+P^n(A_{\mathbf{x}}(t))
+\ \ge\ 1-\alpha,
+\]
+where we used \eqref{eq:pointwise_all_t}. By Fubini,
+\[
+\mathbb E_{P^n}\!\big[\mathrm{Leb}(\widehat C_n(\mathbf{x}))\big]
+=
+\int_0^1 P^n\!\big(t\in \widehat C_n(\mathbf{x})\big)\,dt
+\ \ge\
+\int_0^1 (1-\alpha)\,dt
+=1-\alpha.
+\]
+Moreover, $\mathrm{Leb}(\widehat C_n(\mathbf{x}))\le 2\,\epsilon(\mathbf{x};\mathcal D_n)$, hence
+\[
+2\,\mathbb E_{P^n}\!\big[\epsilon(\mathbf{x};\mathcal D_n)\big]
+\ \ge\
+\mathbb E_{P^n}\!\big[\mathrm{Leb}(\widehat C_n(\mathbf{x}))\big]
+\ \ge\ 1-\alpha,
+\]
+which yields $\mathbb E_{P^n}[\epsilon(\mathbf{x};\mathcal D_n)]\ge (1-\alpha)/2$. This proves the claim \eqref{eq:expected_length_lb}.
+\end{proof}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Proof of Proposition~\ref{prop:proba_error_smoothness}}
+\label{anex:smooth}
+
+\textbf{Topological notation.}
+Fix a topological space $(E,\mathcal T)$; elements of $\mathcal T$ are called \emph{open sets}. A subset $U\subset E$ is a \emph{neighborhood} of a point $x\in E$ if there exists an open set $V\in\mathcal T$ with $x\in V\subset U$; we write $\mathcal N(x)$ for the collection of neighborhoods of $x$. For $A\subset E$, the \emph{interior} $\mathrm{int}(A)$ is the largest open set contained in $A$. The \emph{closure} $\overline{A}$ is the set of all points $x\in E$ such that every $U\in\mathcal N(x)$ meets $A$. The \emph{boundary} $\partial A$ is the set of points that are adherent to both $A$ and its complement $A^C$, \textit{i.e.}, $\partial A = \overline{A} \cap \overline{A^C}$. Given two topological spaces $(E_1, \mathcal{T}_1)$ and $(E_2, \mathcal{T}_2)$, a function $h:E_1 \rightarrow E_2$ is continuous at a point $x \in E_1$ if for any neighborhood $V \in \mathcal{N}(h(x))$ of $h(x)$, there exists a neighborhood $U \in \mathcal{N}(x)$ such that $ h(U) \subset V$.
+
+
+In what follows, all topologies are the metric topologies induced by the specified metrics on the underlying spaces (in particular, we equip $\mathcal X$  and $[0,1]$ with an arbitrary metric, and $\mathcal Y=\{0,1\}$ with the discrete topology). 
+
+\EtaSmooth*
+\begin{proof}
+Since $A_0=\mathcal X\setminus A_1$, we have $\partial A_0=\partial A_1$ (indeed $\partial(\mathcal X\setminus A)=\partial A$
+for any $A\subseteq\mathcal X$).
+
+Fix $\tilde{\mathbf{x}}\in\partial A_1=\partial A_0$.
+By definition of the boundary in a metric space, for every $r>0$ the ball $B(\tilde{\mathbf{x}},r)$ intersects both $A_1$ and $A_0$.
+Hence, for each $k\ge 1$ we can choose
+\[
+\mathbf{x}_k^{(1)}\in A_1\cap B(\tilde{\mathbf{x}},1/k),
+\qquad
+\mathbf{x}_k^{(0)}\in A_0\cap B(\tilde{\mathbf{x}},1/k),
+\]
+so that $\mathbf{x}_k^{(1)}\to\tilde{\mathbf{x}}$ and $\mathbf{x}_k^{(0)}\to\tilde{\mathbf{x}}$ as $k\to\infty$.
+By continuity of $\pi$ and the definition of $\eta$,
+\[
+\eta(\mathbf{x}_k^{(1)})=1-\pi(\mathbf{x}_k^{(1)})\to 1-\pi(\tilde{\mathbf{x}}),
+\qquad
+\eta(\mathbf{x}_k^{(0)})=\pi(\mathbf{x}_k^{(0)})\to \pi(\tilde{\mathbf{x}}).
+\]
+If $\eta$ is continuous at $\tilde{\mathbf{x}}$, then for every sequence $\mathbf{x}_n\to\tilde{\mathbf{x}}$ we have
+$\eta(\mathbf{x}_n)\to\eta(\tilde{\mathbf{x}})$; in particular the two limits above must coincide, hence
+$1-\pi(\tilde{\mathbf{x}})=\pi(\tilde{\mathbf{x}})$, i.e.\ $\pi(\tilde{\mathbf{x}})=\tfrac12$.
+
+Conversely, assume $\pi(\tilde{\mathbf{x}})=\tfrac12$. Then $\eta(\tilde{\mathbf{x}})=\tfrac12$ regardless of the value of $f(\tilde{\mathbf{x}})$.
+Moreover, for every $\mathbf{x}\in\mathcal X$,
+\[
+\bigl|\eta(\mathbf{x})-\tfrac12\bigr|
+=
+\begin{cases}
+|\pi(\mathbf{x})-\tfrac12|, & f(\mathbf{x})=0,\\
+|1-\pi(\mathbf{x})-\tfrac12|=|\pi(\mathbf{x})-\tfrac12|, & f(\mathbf{x})=1,
+\end{cases}
+=|\pi(\mathbf{x})-\tfrac12|.
+\]
+Let $(\mathbf{x}_n)_{n\ge 1}$ be any sequence with $\mathbf{x}_n\to\tilde{\mathbf{x}}$. Using the above identity and continuity of $\pi$ at $\tilde{\mathbf{x}}$,
+\[
+|\eta(\mathbf{x}_n)-\eta(\tilde{\mathbf{x}})|
+=|\eta(\mathbf{x}_n)-\tfrac12|
+=|\pi(\mathbf{x}_n)-\tfrac12|
+\to |\pi(\tilde{\mathbf{x}})-\tfrac12|=0.
+\]
+Thus $\eta(\mathbf{x}_n)\to\eta(\tilde{\mathbf{x}})$ for every sequence $\mathbf{x}_n\to\tilde{\mathbf{x}}$, so $\eta$ is continuous at $\tilde{\mathbf{x}}$.
+\end{proof}
+
+\section{Supplementary for Section~\ref{sec:score_calibration}}
+
+\begin{proof}
+
+    We adapt a standard reduction scheme \cite{Tsybakov2009IntroNonparametric} used in minimax lower bounds. We fix a classifier $f \in \mathcal{F}(\mathcal{X}, \mathcal{Y})$ and a score $u \in \mathcal{F}(\mathcal{X}, [0,1])$ such that $u(\mathcal{X})$ contains a sub-interval of $[0,1]$.
+    
+    \textbf{Reduction to bounds in probability.} First, by Markov inequality, for any calibrator $C\in \mathcal{C}_{B,n,\alpha}$ and any distribution $P \in \mathcal{P}$ and $s >0$,
+    \begin{equation}
+        \label{eq:reduction_tail}
+            \mathbb E_P\!\left[ |\epsilon_n|\right] \geq  s \cdot \mathbb P_P\!\left[|\epsilon_n| \geq s\right].
+    \end{equation}
+
+    \textbf{Reduction to finite number of hypotheses.}
+    It is clear that
+    $$
+    \inf_{C \in \mathcal{C}_{B,n, \alpha}} \sup_{P \in \mathcal{P}} P_P\!\left[|\epsilon_n| \geq s\right] \geq \inf_{B,n, \alpha} \sup_{j \in [B]} P_j\!\left[|\epsilon_n| \geq s\right],
+    $$
+    for a finite set $\{ P_j\}_{j=1}^B \subset \mathcal{P}_f$. 
+
+  \textbf{Construction of the finite family.}
+Let $P_X \in \mathcal{P}_f$, \textit{i.e.} $P_{u(\mathbf X)}$ is nonatomic.
+By Lemma~\ref{lem:equal_mass_partition_R}, there exists a measurable partition
+$\{A_b\}_{b=1}^B$ of $\mathbb R$ such that $P_X(A_b)=1/B$ for all $b\in[B]$.
+For each $j\in[B]$, define $P_j\in\mathcal P(\mathcal X\times\{0,1\})$ by
+\[
+\mathbf X\sim P_X,\qquad
+E\mid(\mathbf X=\mathbf x)\sim \mathrm{Bern}\!\Big(\frac12+2s\,\mathds 1\{u(\mathbf x)\in A_j\}\Big).
+\]
+Then for all $b\in[B]$,
+\[
+\mathbb P_j\big(u(\mathbf X)\in A_b\big)=\frac1B,
+\qquad
+\mathbb P_j\big(E=1\mid u(\mathbf X)\in A_b\big)
+=
+\begin{cases}
+\frac12+2s,& b=j,\\[2pt]
+\frac12,& b\neq j.
+\end{cases}
+\]
+
+\textbf{Reduction to testing.}
+Combining Lemma~\ref{lem:calib_to_test_simple} with the Markov reduction \eqref{eq:reduction_tail}
+yields the testing lower bound
+\[
+\epsilon^*_{n,B,\alpha}
+\ge
+\inf_{\psi}\sup_{j\in[B]} s\Big(\mathbb P_{P_j^{\otimes n}}(\psi\neq j)-\alpha\Big),
+\]
+and we may now proceed with the Fano argument exactly as in the sequel.
+
+    \textbf{Fano argument.} We now use a Fano's inequality to prove minimax lower bound. For a test $\psi: ([B] \times \{0,1\})^n \to \{0,1\}$, define the \textit{ average probability of error} and the minimum average probability of error by
+    $$
+    \Bar{p}_{e, B}(\psi) = \frac{1}{B}\sum_{j=1}^B P_j(\psi \neq j),
+    $$
+    and 
+    $$
+    \Bar{p}_{e,B} \coloneqq \inf_\psi \Bar{p}_{e, B}(\psi). 
+    $$
+    Notice that,
+    \begin{align*}
+         \inf_\psi \sup_{j \in [B]} P_j(\psi \neq j) &\geq   \inf_\psi \Bar{p}_{e,B}(\psi) = \Bar{p}_{e,B}.
+    \end{align*}
+    Therefore, by combining the above inequality with \eqref{eq:reduction_testing},
+    \begin{equation}
+        \label{eq:reduction_mean_error}
+            \mathfrak \epsilon^*_{n,B, \alpha}  \geq s( \Bar{p}_{e,B} - \alpha).
+    \end{equation}
+Introduce a probability measure $\Bar{P} \in \mathcal{P}$ in the following as:
+    $$
+    \Bar{P} \coloneqq \frac{1}{B}\sum_{j=1}^B
+ P_j^{\otimes n}. $$
+ By \cite{Tsybakov2009IntroNonparametric}[Lemma 2.10],
+\begin{equation}
+\label{eq:fano}
+    \Bar{p}_{e,B} \geq 1 - \frac{\frac{1}{B}\sum_{j=1}^B \mathrm{KL}(P_j^{\otimes n}, \Bar{P})  + \log 2}{\log B}. 
+\end{equation}
+Moreover, as the measures $P_j$ are mutually absolutely continuous; then by convexity of $\mathrm{KL}$, for any $j \in [B]$
+$$
+\mathrm{KL}(P_j^{\otimes n}, \Bar{P}) \leq \frac{1}{B}\sum_{k=1}^B \mathrm{KL}(P_j^{\otimes n}, P_k^{\otimes n}).
+$$
+By combining the above inequality with \eqref{eq:fano},
+    \begin{align*}
+        \Bar{p}_{e,B} 
+        &\geq 1 - \frac{\frac{1}{B^2}\sum_{j,k=1}^B \mathrm{KL}(P_j^{\otimes n}, P_k^{\otimes n})  + \log 2}{\log B} \\
+        &\geq 1 - \frac{\frac{n}{B^2}\sum_{j,k=1}^B \mathrm{KL}(P_j, P_k)  + \log 2}{\log B},
+    \end{align*}
+as $\mathrm{KL}(P_j^{\otimes n}, P_k^{\otimes n}) = n \cdot  \mathrm{KL}(P_j, P_k).$ If $s \leq 1/8$, then by Lemma~\ref{lem:kl_bound} there exists a constant $C_\mathrm{KL} > 0$ such that $$\mathrm{KL}(P_j, P_k) \leq C_\mathrm{KL}\frac{s^2}{B}.$$ Therefore, the above inequality becomes
+\begin{align*}
+     \Bar{p}_{e,B}  &\geq 1 - \frac{\frac{n}{B} C_\mathrm{KL}s^2  + \log 2}{\log B}.
+\end{align*}
+
+Finally, by combining the above inequality with \eqref{eq:reduction_mean_error}, if $s \leq 1/8$
+\begin{align*}
+    \epsilon^*_{n,B, \alpha} 
+     &\geq s \Big( 1 - \alpha - \frac{\frac{n}{B} C_\mathrm{KL}s^2  + \log 2}{\log B} \Big) \\
+     &= s \Big( \Delta_{B, \alpha} - \frac{n}{B\log B} C_\mathrm{KL}s^2 \Big),  \tag{\theequation}\label{eq:max_lower_bound}
+\end{align*}
+where $\Delta_{B, \alpha} \coloneqq 1 - \alpha- \frac{\log 2}{\log B}.$ 
+
+\textbf{Maximizing the lower bound \eqref{eq:max_lower_bound}.} We now focus on maximizing the lower bound \eqref{eq:max_lower_bound}. First notice that a necessary condition for it to be non-trivial is
+$$
+\Delta_{B, \alpha} > 0 \Leftrightarrow B> 2^{1/(1- \alpha)}.
+$$
+Note that a convenient condition to remove the dependence on $B$ is the following:
+\begin{equation}
+    \label{eq:B_condition_alpha}
+    B> 2^{2/(1- \alpha)} \implies \Delta_{B, \alpha} > \frac{1 - \alpha}{2}.
+\end{equation}
+Supposing for the moment that $\Delta_{B, \alpha} >0$, the lower bound is non-trivial if and only if,
+\begin{align*}
+   & \Delta_{B, \alpha} - \frac{n}{B\log B} C_\mathrm{KL}s^2 > 0 \\
+   \Leftrightarrow & s^2 < \frac{\Delta_{B, \alpha}}{C_\mathrm{KL}}  \cdot \frac{B \log B}{n}.
+\end{align*}
+Therefore, let $s = \min\{ \frac{1}{8}, s^* \}$ where,
+$$
+s^* = \sqrt{\frac{\Delta_{B, \alpha}}{2 C_\mathrm{KL}}  \cdot \frac{B \log B}{n}}.
+$$
+We now study the value of \eqref{eq:max_lower_bound} in the two regimes. If $s^* \leq 1/8$, then $s = s^*$ and
+\begin{align*}
+    s \Big(\Delta_{B, \alpha} - \frac{n}{B\log B} C_\mathrm{KL}s^2 \Big) &= s\frac{\Delta_{B, \alpha}}{2}  \\
+    &= \frac{\Delta_{B, \alpha}^{3/2}}{2^{3/2}  C_\mathrm{KL}^{1/2}} \cdot \sqrt{\frac{B \log B}{n}}.
+\end{align*}
+Also, if $s^* > 1/8$, then $s= 1/8$ and
+\begin{align*}
+    s \Big(\Delta_{B, \alpha} - \frac{n}{B\log B} C_\mathrm{KL}s^2 \Big) &> s\frac{\Delta_{B, \alpha}}{2}  \\
+    &= \frac{\Delta_{B, \alpha}}{16}.
+\end{align*}
+By combining the above, if $B > 2^{1/(1-\alpha)}$ the inequality \eqref{eq:max_lower_bound} becomes
+\begin{align*}
+      \epsilon^*_{n,B, \alpha} 
+     &\geq \min \Big\{ \frac{\Delta_{B, \alpha}}{16} , \frac{\Delta_{B, \alpha}^{3/2}}{2^{3/2}  C_\mathrm{KL}^{1/2}} \cdot \sqrt{\frac{B \log B}{n}} \Big \} \\
+     &\geq c_{B, \alpha} \min \Big \{ 1, \sqrt{\frac{B \log B}{n}} \Big \},
+\end{align*}
+where $c_{B, \alpha} \coloneqq \min \Big \{ \frac{\Delta_{B, \alpha}}{16}, \frac{\Delta_{B, \alpha}^{3/2}}{2^{3/2}  C_\mathrm{KL}^{1/2}}  \Big \}.$
+Moreover if $B > 2^{2/(1- \alpha)}$ then by \eqref{eq:B_condition_alpha}, $c_{B, \alpha} \geq c_\alpha$ where
+$$c_{\alpha} \coloneqq \min \Big \{ \frac{1 - \alpha}{32}, \frac{(1-\alpha)^{3/2}}{8  C_\mathrm{KL}^{1/2}}  \Big \}.$$
+Finally, if $B > 2^{2/(1- \alpha)}$ then 
+\begin{equation}
+   \epsilon^*_{n,B, \alpha}  \geq c_{ \alpha} \min \Big \{ 1, \sqrt{\frac{B \log B}{n}} \Big \},
+\end{equation}
+where $c_\alpha$ is decreasing with respect to $\alpha$.
+
+
+    
+\end{proof}
+
+\begin{lemma}
+\label{lem:calib_to_test_simple}
+Assume that for any $C\in\mathcal C_{B,n}$ the output $\widehat u_n$ takes exactly $B$ distinct
+values almost surely, and write them as $\{t_{1,n},\dots,t_{B,n}\}$ with the convention that
+\[
+\widehat u_n(\mathbf x)=t_{b,n}\quad\text{whenever }u(\mathbf x)\in A_b.
+\]
+Define the test $\psi:([B]\times\{0,1\})^n\to[B]$ by
+\[
+\psi(\mathcal D_n)\in\arg\max_{b\in[B]} t_{b,n}(\mathcal D_n),
+\]
+with deterministic tie-breaking. Then for every $j\in[B]$,
+\[
+\mathbb P_{P_j^{\otimes n}}\!\left(|\epsilon_n|\ge s\right)
+\;\ge\;
+\mathbb P_{P_j^{\otimes n}}(\psi\neq j)-\alpha.
+\]
+\end{lemma}
+\begin{proof}[Proof of Lemma~\ref{lem:calib_to_test_noU}]
+Fix $j\in[B]$. Let $\mathcal G$ be the event (measurable w.r.t.\ $\mathcal D_n$) that the
+$(\epsilon,\alpha)$-calibration inequality \eqref{eq:calib} holds for
+$P_{\widehat u_n(\mathbf X)\mid \mathcal D_n}$-a.e.\ $t$.
+By definition of $(\epsilon,\alpha)$-calibration, $\mathbb P_{P_j^{\otimes n}}(\mathcal G)\ge 1-\alpha$.
+
+On $\mathcal G\cap\{|\,\epsilon_n\,|<s\}$, since $\widehat u_n$ takes exactly $B$ values and
+\[
+\mathbb P_j\!\big(\widehat u_n(\mathbf X)=t_{b,n}\mid\mathcal D_n\big)
+=
+\mathbb P_j\!\big(u(\mathbf X)\in A_b\big)
+=
+\frac1B>0,
+\]
+the calibration inequality holds in particular for each $t=t_{b,n}$:
+\[
+\big|\mathbb E_j[E\mid \widehat u_n(\mathbf X)=t_{b,n},\mathcal D_n]-t_{b,n}\big|
+\le \epsilon_n(t_{b,n})\le |\epsilon_n|<s.
+\]
+Moreover, $\{\widehat u_n(\mathbf X)=t_{b,n}\}=\{u(\mathbf X)\in A_b\}$ $P_j$-a.s., and the test point
+$\mathbf X$ is independent of $\mathcal D_n$, hence
+\[
+\mathbb E_j[E\mid \widehat u_n(\mathbf X)=t_{b,n},\mathcal D_n]
+=
+\mathbb E_j[E\mid u(\mathbf X)\in A_b]
+=
+\begin{cases}
+\frac12+2s,& b=j,\\[2pt]
+\frac12,& b\neq j.
+\end{cases}
+\]
+Therefore on $\mathcal G\cap\{|\,\epsilon_n\,|<s\}$ we obtain
+\[
+t_{j,n}>\frac12+s,\qquad\text{and}\qquad t_{b,n}<\frac12+s\ \ \forall b\neq j,
+\]
+which implies $\psi(\mathcal D_n)=j$ by definition of $\psi$.
+Hence
+\[
+\{\psi\neq j\}\subset \{|\,\epsilon_n\,|\ge s\}\cup \mathcal G^c,
+\]
+and taking probabilities under $P_j^{\otimes n}$ yields
+\[
+\mathbb P_{P_j^{\otimes n}}(\psi\neq j)
+\le
+\mathbb P_{P_j^{\otimes n}}(|\epsilon_n|\ge s)+\mathbb P_{P_j^{\otimes n}}(\mathcal G^c)
+\le
+\mathbb P_{P_j^{\otimes n}}(|\epsilon_n|\ge s)+\alpha,
+\]
+which is equivalent to the claim.
+\end{proof}
+
+
+
+\begin{lemma}[Restated from~\cite{gupta2022distributionfreebinaryclassificationprediction}]
+    Let $u \in \mathcal{F}(\mathcal{X}, [0,1])$ be an uncertainty score such that $u(\mathcal{X})$ contains a sub-interval of $[0,1]$. Then there exists a distribution $P \in  \mathcal{P}(\mathcal{X} \times \mathcal{Y})$ such that $P_{u(\mathbf{X})}$ is non-atomic.
+\end{lemma}
+
+\begin{lemma}
+     Let $u \in \mathcal{F}(\mathcal{X}, [0,1])$ be an uncertainty score such that $u(\mathcal{X})$ contains a sub-interval of $[0,1]$. Then the set $\mathcal{C}_{B,n, \alpha}$. Then there exists a finite family $P_1, \dots, P_B \in \mathcal{P}(\mathcal{X}, \mathcal{Y})$ of $2$s separated hypothesis, \textit{i.e.},
+\begin{equation}
+    \label{eq:2s_separated}
+     d(P_j, P_k) \geq 2 s, \quad \forall k, j \in [B]: k \neq j,
+\end{equation}
+with $s > 0$.
+\end{lemma}
+
+
+% \begin{lemma}
+% \label{eq:2s_separated}
+% Let $f \in \mathcal{F}(\mathcal{X}, \mathcal{Y})$ be a classifier and $u\in \mathcal{F}(\mathcal{X}, [0,1])$. Consider a calibrator $C \in \mathcal{C}_{B,n, \alpha}$. Let $P_1, \dots, P_B \in \mathcal{P}$ be a finite family of $2$s separated hypothesis, \textit{i.e.},
+% \begin{equation}
+%     \label{eq:2s_separated}
+%      d(P_j, P_k) \geq 2 s, \quad \forall k, j \in [B]: k \neq j,
+% \end{equation}
+% with $s > 0$. Then there exists a test  $\psi : ([B]\times \{0,1\})^n \rightarrow \{ 1, \dots, B\}$ such that:
+% $$
+% \forall j \in [B]:  P_j\!\left[|\widehat C_n| \geq s\right] \geq P_j ( \psi \neq j) - \alpha.
+% $$
+% \end{lemma}
+% \begin{proof}
+%     Fix an index $j \in [B]$.     Define the test $\psi : ([B]\times \{0,1\})^n \rightarrow \{ 1, \dots, B\}$ as: 
+%     $$
+%     \begin{cases}
+%         \exists ! j \in [B]: \forall b \in [B], \eta_{j}(b) \in \widehat{C}_n(b, \mathcal{D}_n), \quad \text{set } \psi=j, \\
+%         \text{otherwise set } \psi = 1.
+%     \end{cases}
+%     $$
+%     Denoting,
+%     $$
+%     \mathcal{E}_j \coloneqq \Big \{ \forall b \in [B],  \eta_j(b) \in \widehat{C}_n(b, \mathcal{D}_n)\Big \}.
+%     $$
+%     we first show that,
+%     $$
+%     \mathcal{E}_j \cap \{ |\widehat C_n| < s\} \subset \{ \psi = j\}.
+%     $$
+%     On $\mathcal{E}_j \cap \{ |\widehat C_n| < s\}$ this resume to show that for any $k \neq j$, there exists $b \in [B]$ such that $\eta_k(b) \notin \widehat{C}_n(b, \mathcal{D}_n)$. By absurd, suppose that it is false and let $k \neq j$ such that$\eta_k(b^*) \in \widehat{C}_n(b, \mathcal{D}_n)$ where $b^* \in [B]$. Then as both $\eta_j(b^*)$ and $\eta_k(b^*)$ are in $\widehat{C}_n(b, \mathcal{D}_n)$,
+%     $$
+%     \mathrm{leb } \widehat{C}_n(b, \mathcal{D}_n) \geq | \eta_{j}(b^*) - \eta_{k}(b^*)| \geq 2s,
+%     $$
+%     where the last inequality holds by \eqref{eq:2s_separated}. This imply
+%    $$
+%     |\widehat{C}_n | \geq 2s,
+%     $$
+%     which is absurd on $\{ |\widehat C_n| < s$. Finally,
+    
+%     $$
+%     P_j\!\left[|\widehat C_n|  \geq s\right] +  P_j(\mathcal{E}^C )\geq P_j ( \psi \neq j) 
+%     $$
+%     and by using $P_j(\mathcal{E}^c) \leq \alpha$,
+%     $$
+%     \forall j \in [B]:  P_j\!\left[|\widehat C_n| \geq s\right] \geq P_j ( \psi \neq j) - \alpha.
+%     $$
+% \end{proof}
+
+\begin{lemma}[KL bound]
+\label{lem:kl_bound}
+Consider the family  $\{P_1, \dots, P_B\} \subset \mathcal{P}$ $2$-s separated hypothesis defined by:
+    $$
+    \forall j,b \in [B], \quad \eta_j(b) \coloneqq \frac{1}{2} + 2s \mathds{1}\{j =b\}.
+    $$ 
+    If $0 \leq s \leq \frac{1}{8}$, then there exists a constant $C_\mathrm{KL} >0$ such that for any $j,k \in [B]$,
+    $$
+    \mathrm{KL}(P_j, P_k) \leq \frac{C_\mathrm{KL}}{B} s^2. 
+    $$
+\end{lemma}
+
+
+\begin{lemma}[Equal-mass partition on $\mathbb R$]
+\label{lem:equal_mass_partition_R}
+Let $\nu$ be a nonatomic probability measure on $(\mathbb R,\mathcal B(\mathbb R))$ and let
+$B\ge 2$ be an integer. Then there exists a measurable partition
+$(A_b)_{b=1}^B$ of $\mathbb R$ such that
+\[
+\nu(A_b)=\frac{1}{B},\qquad b=1,\dots,B.
+\]
+\end{lemma}
+
+\begin{proof}
+Let $F:\mathbb R\to[0,1]$ be the cumulative distribution function of $\nu$, defined by
+\[
+F(t)\coloneqq \nu\big((-\infty,t]\big),\qquad t\in\mathbb R.
+\]
+Since $\nu$ is nonatomic, $F$ is continuous on $\mathbb R$.
+Moreover, $\lim_{t\to-\infty}F(t)=0$ and $\lim_{t\to+\infty}F(t)=1$.
+
+For each $b\in\{0,1,\dots,B\}$ define the (right-continuous) quantile
+\[
+q_b \;\coloneqq\; \inf\Big\{t\in\mathbb R:\ F(t)\ge \frac{b}{B}\Big\}\in \mathbb R\cup\{\pm\infty\}.
+\]
+By definition, $q_0=-\infty$ and $q_B=+\infty$ (in the extended real line), and the sequence
+$(q_b)_{b=0}^B$ is nondecreasing. We claim that
+\begin{equation}
+\label{eq:quantile_identity}
+F(q_b)=\frac{b}{B},\qquad b=0,1,\dots,B.
+\end{equation}
+Indeed, by definition of $q_b$ and right-continuity of $F$ we have $F(q_b)\ge b/B$.
+If $F(q_b)>b/B$, then by continuity of $F$ there exists $\delta>0$ such that
+$F(q_b-\delta)>b/B$, contradicting the minimality of $q_b$.
+This proves \eqref{eq:quantile_identity}.
+
+Now set, for $b=1,\dots,B$,
+\[
+A_b \;\coloneqq\; (q_{b-1},q_b]\subset \mathbb R.
+\]
+Then $(A_b)_{b=1}^B$ is a measurable partition of $\mathbb R$ (up to possible empty sets, which
+cannot occur here since $\nu$ is nonatomic and \eqref{eq:quantile_identity} forces
+$\nu((q_{b-1},q_b])>0$). Finally,
+\[
+\nu(A_b)
+=\nu\big((-\infty,q_b]\big)-\nu\big((-\infty,q_{b-1}]\big)
+=F(q_b)-F(q_{b-1})
+=\frac{b}{B}-\frac{b-1}{B}
+=\frac{1}{B},
+\]
+where we used \eqref{eq:quantile_identity}. This concludes the proof.
+\end{proof}
+
+\section{Experiments in Section~\ref{sec:experiments}}
+\label{app:expe}
+
+\subsection{Dataset Statistics and Hyperparameter Values}
+\input{tables/dataset_stats}
+
+\subsection{Uncertainty scores}
+\label{app:uncertainty_scores}
+
+Let $g:\mathcal X \to \Delta^{K-1}$ be a probabilistic predictor that outputs a vector
+$g(x)=(g_1(x),\dots,g_K(x))$ on the probability simplex. The associated classifier is
+\[
+f(x) \in \arg\max_{k\in[K]} g_k(x).
+\]
+
+\paragraph{Softmax probability (SP).}
+The softmax-probability (maximum softmax probability) score is defined as
+\[
+u_{\mathrm{SP}}(x) := 1 - \max_{k\in[K]} g_k(x) = 1 - g_{f(x)}(x).
+\]
+When an \emph{uncertainty} score is required (higher means more uncertain), we use the monotone transform
+\[
+u_{\mathrm{SP\text{-}unc}}(x) := 1-u_{\mathrm{SP}}(x).
+\]
+
+\paragraph{Mahalanobis distance (MD).}
+Following \citet{vazhentsev_uncertainty_2022}, we quantify uncertainty by measuring the Mahalanobis distance between a test instance and the closest class-conditional Gaussian distribution. Let $h_i\in\mathbb R^d$ be the hidden representation of instance $i$, and let $\mathcal C=\{1,\dots,K\}$ denote the set of classes. Define the MD score
+\begin{equation}
+u_{\mathrm{MD}}(h_i)
+~:=~
+\min_{c\in\mathcal C}
+\big(h_i-\mu_c\big)^\top \Sigma^{-1}\big(h_i-\mu_c\big),
+\label{eq:md_score}
+\end{equation}
+where $h_i$ is a hidden representation of the $i$-th instance, $\mu_c$ is the centroid of class $c$, and $\Sigma$ is a covariance matrix for hidden representations of training instances. Larger values of $u_{\mathrm{MD}}$ indicate that the representation is far from all class centroids, hence higher uncertainty.
+
+
+
+
+\end{document}

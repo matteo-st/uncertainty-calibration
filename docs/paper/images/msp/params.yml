@@ -1,0 +1,8 @@
+# Parameters used to generate plots in this folder
+# Generated: 2026-01-29T08:19:54.052144
+
+score_name: msp
+baseline_run_tag: msp-grid-20260120
+partition_run_tag: msp-unif-mass-sim-grid-20260120
+n_seeds: 9
+results_dir: results

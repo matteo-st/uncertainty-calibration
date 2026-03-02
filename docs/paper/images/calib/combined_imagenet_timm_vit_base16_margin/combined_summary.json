@@ -1,0 +1,18 @@
+{
+  "score_type": "margin",
+  "score_label": "Margin",
+  "conservative": {
+    "n_bins": 50,
+    "n_violations": 0
+  },
+  "calibrated_mean": {
+    "n_bins": 50,
+    "n_violations": 24,
+    "ece": 0.011997471608575434
+  },
+  "raw_score": {
+    "n_bins": 50,
+    "n_violations": 43,
+    "ece": 0.07557347687482834
+  }
+}

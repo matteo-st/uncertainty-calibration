@@ -1,0 +1,6 @@
+\textbf{Combined Reliability Diagram (Doctor Score).}
+Comparison of three calibration approaches on ImageNet with ViT-Base16 (50 bins).
+\textbf{Blue circles}: Conservatively calibrated using upper bound $\hat{u}(b)$; all points lie below the diagonal ($y=x$), demonstrating the guarantee from Corollary~4.1 with 0/50 violations.
+\textbf{Green diamonds}: Calibrated using mean $\hat{p}_{\mathrm{cal}}(b)$; points cluster around the diagonal (ECE=0.0102) with 25/50 violations, showing standard calibration without conservative guarantees.
+\textbf{Orange triangles}: Doctor score $\bar{s}(b)$; points deviate substantially from the diagonal (ECE=0.0539) with 44/50 violations, demonstrating that Doctor is not calibrated as an error probability estimator.
+The Y-axis shows the empirical test error rate for all methods.

@@ -1,0 +1,22 @@
+% MSP vs Uniform Mass binning (Rice's rule). Mean ± std over 9 seeds.
+\begin{table}[t]
+\centering
+\caption{MSP vs.\ Uniform Mass binning (Rice's rule). Mean $\pm$ std over 9 seeds.}
+\label{tab:msp_vs_uniform_mass}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+& & \multicolumn{2}{c}{\textbf{ROC-AUC} $\uparrow$} & \multicolumn{2}{c}{\textbf{FPR@95} $\downarrow$} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6}
+\textbf{Dataset} & \textbf{Model} & MSP & UM & MSP & UM \\
+\midrule
+ImageNet & ViT-B/16 & .875{\scriptsize $\pm$.002} & \textbf{.875}{\scriptsize $\pm$.002} & \textbf{.425}{\scriptsize $\pm$.007} & .438{\scriptsize $\pm$.002} \\
+ImageNet & ViT-Ti/16 & \textbf{.867}{\scriptsize $\pm$.001} & .867{\scriptsize $\pm$.001} & \textbf{.451}{\scriptsize $\pm$.008} & .455{\scriptsize $\pm$.009} \\
+CIFAR-100 & ResNet-34 & \textbf{.881}{\scriptsize $\pm$.003} & .876{\scriptsize $\pm$.005} & \textbf{.397}{\scriptsize $\pm$.015} & .431{\scriptsize $\pm$.019} \\
+CIFAR-100 & DenseNet-121 & .853{\scriptsize $\pm$.008} & \textbf{.853}{\scriptsize $\pm$.003} & \textbf{.471}{\scriptsize $\pm$.022} & .478{\scriptsize $\pm$.019} \\
+CIFAR-10 & ResNet-34 & \textbf{.927}{\scriptsize $\pm$.004} & .908{\scriptsize $\pm$.013} & \textbf{.318}{\scriptsize $\pm$.063} & .554{\scriptsize $\pm$.163} \\
+CIFAR-10 & DenseNet-121 & .887{\scriptsize $\pm$.039} & \textbf{.900}{\scriptsize $\pm$.008} & \textbf{.460}{\scriptsize $\pm$.151} & .512{\scriptsize $\pm$.075} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

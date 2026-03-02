@@ -1,0 +1,6 @@
+\textbf{Combined Reliability Diagram (Margin Score).}
+Comparison of three calibration approaches on ImageNet with ViT-Base16 (50 bins).
+\textbf{Blue circles}: Conservatively calibrated using upper bound $\hat{u}(b)$; all points lie below the diagonal ($y=x$), demonstrating the guarantee from Corollary~4.1 with 0/50 violations.
+\textbf{Green diamonds}: Calibrated using mean $\hat{p}_{\mathrm{cal}}(b)$; points cluster around the diagonal (ECE=0.0120) with 24/50 violations, showing standard calibration without conservative guarantees.
+\textbf{Orange triangles}: Margin score $\bar{s}(b)$; points deviate substantially from the diagonal (ECE=0.0756) with 43/50 violations, demonstrating that Margin is not calibrated as an error probability estimator.
+The Y-axis shows the empirical test error rate for all methods.

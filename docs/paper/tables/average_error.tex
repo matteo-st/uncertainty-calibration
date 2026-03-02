@@ -1,0 +1,16 @@
+\begin{table*}[t]
+\centering
+\caption{Error rate (\%) by model and dataset. A dash indicates not evaluated.}
+\label{tab:average_error}
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{4}{c}{\textbf{Model}} \\
+\cmidrule(lr){2-5}
+\textbf{Dataset} & \textbf{DenseNet-121} & \textbf{ResNet-34} & \textbf{ViT-B/16} & \textbf{ViT-Tiny/16} \\
+\midrule
+CIFAR-10   &  6.0 &  4.6 & -    & -    \\
+CIFAR-100  & 26.2 & 21.0 & -    & -    \\
+ImageNet-1k&  -   &  -  & 18.1 & 24.2 \\
+\bottomrule
+\end{tabular}
+\end{table*}

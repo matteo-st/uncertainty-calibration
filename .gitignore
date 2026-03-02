@@ -53,7 +53,22 @@ Thumbs.db
 *.log
 logs/
 
+# Claude Code (local settings, not shared)
+.claude/settings.local.json
+
 # Cached model files (if any local testing)
 *.pt
 *.bin
 *.safetensors
+
+# LaTeX build artifacts
+docs/paper/*.aux
+docs/paper/*.bbl
+docs/paper/*.blg
+docs/paper/*.fdb_latexmk
+docs/paper/*.fls
+docs/paper/*.log
+docs/paper/*.out
+docs/paper/*.synctex.gz
+docs/paper/*.pdf
+docs/paper/Old/

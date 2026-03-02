@@ -1,0 +1,22 @@
+% Margin vs Uniform Mass binning (Rice's rule). Mean ± std over 9 seeds.
+\begin{table}[t]
+\centering
+\caption{Margin vs.\ Uniform Mass binning (Rice's rule). Mean $\pm$ std over 9 seeds.}
+\label{tab:margin_vs_uniform_mass}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+& & \multicolumn{2}{c}{\textbf{ROC-AUC} $\uparrow$} & \multicolumn{2}{c}{\textbf{FPR@95} $\downarrow$} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6}
+\textbf{Dataset} & \textbf{Model} & Margin & UM & Margin & UM \\
+\midrule
+ImageNet & ViT-B/16 & \textbf{.872}{\scriptsize $\pm$.002} & .871{\scriptsize $\pm$.002} & \textbf{.428}{\scriptsize $\pm$.006} & .445{\scriptsize $\pm$.010} \\
+ImageNet & ViT-Ti/16 & \textbf{.863}{\scriptsize $\pm$.001} & .862{\scriptsize $\pm$.001} & \textbf{.448}{\scriptsize $\pm$.007} & .461{\scriptsize $\pm$.011} \\
+CIFAR-100 & ResNet-34 & .869{\scriptsize $\pm$.010} & \textbf{.875}{\scriptsize $\pm$.003} & \textbf{.395}{\scriptsize $\pm$.015} & .440{\scriptsize $\pm$.025} \\
+CIFAR-100 & DenseNet-121 & \textbf{.853}{\scriptsize $\pm$.003} & .849{\scriptsize $\pm$.003} & \textbf{.460}{\scriptsize $\pm$.016} & .483{\scriptsize $\pm$.023} \\
+CIFAR-10 & ResNet-34 & \textbf{.924}{\scriptsize $\pm$.012} & .907{\scriptsize $\pm$.012} & \textbf{.213}{\scriptsize $\pm$.026} & .578{\scriptsize $\pm$.149} \\
+CIFAR-10 & DenseNet-121 & .893{\scriptsize $\pm$.050} & \textbf{.899}{\scriptsize $\pm$.010} & \textbf{.325}{\scriptsize $\pm$.111} & .523{\scriptsize $\pm$.130} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
