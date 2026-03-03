@@ -227,15 +227,16 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                             "raw_rocauc": float(raw_rocauc),
                         })
 
-                        # --- Isotonic Regression (discrete output) ---
-                        # MCE via level sets: isotonic regression produces a
-                        # step function with a finite number of distinct values.
+                        # --- Isotonic Regression (continuous output) ---
+                        # Isotonic regression interpolates linearly between
+                        # knots, producing continuous output on continuous
+                        # input. MCE via uniform-mass binning on n_test.
                         try:
                             iso = IsotonicRegression(out_of_bounds="clip")
                             iso.fit(cal_scores_sample, cal_errors_sample)
                             test_iso = iso.predict(test_md)
                             iso_rocauc = compute_rocauc(test_iso, test_errors)
-                            iso_mce = compute_mce_discrete(
+                            iso_mce = compute_mce_uniform_mass(
                                 test_iso, test_errors
                             )
                         except Exception:
