@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Plot n_cal ablation results: MCE and ROCAUC vs calibration set size.
+Plot n_cal ablation results: MCE, ECE, and ROCAUC vs calibration set size.
 
 Generates:
-  1. Main figure (DeBERTa, MD only): 2 rows x 2 cols
-  2. Appendix figure per score (MD, SP): 6 rows x 2 cols, compact
+  1. Main figure (DeBERTa, MD only): 2 rows x 2 cols (MCE + ROCAUC)
+  2. Appendix MCE+ROCAUC figures per score (MD, SP): 6 rows x 2 cols
+  3. Appendix ECE figures per score (MD, SP): 6 rows x 1 col
 
 Usage:
     python scripts/plot_ncal_ablation.py \
@@ -41,6 +42,9 @@ DATASET_NAMES = {"sst2": "SST-2", "agnews": "AG News"}
 MODEL_NAMES = {"electra": "ELECTRA", "bert": "BERT", "deberta": "DeBERTa"}
 SCORE_NAMES = {"md": "Mahalanobis Distance", "sp": "Softmax Probability"}
 
+# Metrics collected from the JSON
+METRICS = ["mce", "rocauc", "ece"]
+
 
 def compute_theoretical_epsilon(n_cal, alpha=0.05):
     """Compute UM theoretical guarantee epsilon."""
@@ -56,17 +60,9 @@ def compute_theoretical_epsilon(n_cal, alpha=0.05):
 def load_and_aggregate(json_path, model_filter=None, score_filter=None):
     """Load JSON results and aggregate by (method, n_cal, dataset).
 
-    Args:
-        json_path: Path to ablation JSON file.
-        model_filter: If set, keep only this model (e.g. "deberta").
-        score_filter: If set, keep only this score (e.g. "md").
-
     Returns:
-        agg: dict (method, n_cal, dataset) -> {"mce": [...], "rocauc": [...]}
-        n_cal_values: sorted list of n_cal values
-        raw_rocaucs: dict dataset -> list of raw_rocauc values
-        alpha: significance level
-        datasets: sorted list of dataset keys present
+        agg: dict (method, n_cal, dataset) -> {"mce": [...], "rocauc": [...], "ece": [...]}
+        n_cal_values, raw_rocauc_means, alpha, datasets
     """
     with open(json_path) as f:
         data = json.load(f)
@@ -80,18 +76,16 @@ def load_and_aggregate(json_path, model_filter=None, score_filter=None):
     for r in results:
         if model_filter and r["model"] != model_filter:
             continue
-        # Handle both old format (no "score" field = MD only) and new format
         r_score = r.get("score", "md")
         if score_filter and r_score != score_filter:
             continue
         ds = r["dataset"]
         key = (r["method"], r["n_cal"], ds)
         if key not in agg:
-            agg[key] = {"mce": [], "rocauc": []}
-        if not math.isnan(r["mce"]):
-            agg[key]["mce"].append(r["mce"])
-        if not math.isnan(r["rocauc"]):
-            agg[key]["rocauc"].append(r["rocauc"])
+            agg[key] = {m: [] for m in METRICS}
+        for m in METRICS:
+            if m in r and not math.isnan(r[m]):
+                agg[key][m].append(r[m])
         if r["method"] == "um":
             raw_rocaucs.setdefault(ds, []).append(r["raw_rocauc"])
 
@@ -112,78 +106,75 @@ def has_score(json_path, score_name):
     return False
 
 
+def has_metric(json_path, metric_name):
+    """Check if a metric exists in the JSON data."""
+    with open(json_path) as f:
+        data = json.load(f)
+    return metric_name in data["results"][0]
+
+
+def _plot_metric_on_ax(ax, agg, dataset, n_cal_values, metric, alpha,
+                       show_epsilon=False, show_raw_rocauc=False,
+                       raw_rocauc=None, show_legend=False, show_xlabel=True):
+    """Plot a single metric on one axes for one dataset."""
+    # Theoretical epsilon curve (only for MCE)
+    if show_epsilon:
+        n_smooth = np.logspace(
+            np.log10(min(n_cal_values)), np.log10(max(n_cal_values)), 200
+        )
+        eps_smooth = [compute_theoretical_epsilon(int(n), alpha) for n in n_smooth]
+        ax.plot(n_smooth, eps_smooth, color="black", linestyle="--",
+                linewidth=1.2, label=r"Theor. $\varepsilon$", zorder=5)
+
+    for method in METHODS:
+        means, stds = [], []
+        valid_ncals = []
+        for n_cal in n_cal_values:
+            key = (method, n_cal, dataset)
+            if key not in agg or not agg[key][metric]:
+                continue
+            valid_ncals.append(n_cal)
+            means.append(np.mean(agg[key][metric]))
+            stds.append(np.std(agg[key][metric]))
+
+        valid_ncals = np.array(valid_ncals)
+        means = np.array(means)
+        stds = np.array(stds)
+
+        ax.plot(valid_ncals, means, color=COLORS[method], marker="o",
+                markersize=3, linewidth=1.2, label=LABELS[method], zorder=3)
+        ax.fill_between(valid_ncals, means - stds, means + stds,
+                        color=COLORS[method], alpha=0.15, zorder=2)
+
+    if show_raw_rocauc and raw_rocauc is not None:
+        ax.axhline(raw_rocauc, color="gray", linestyle="--", linewidth=1.0,
+                   label="Raw (no cal.)", zorder=1)
+
+    ax.set_xscale("log")
+    ax.xaxis.set_major_formatter(ScalarFormatter())
+    ax.set_xticks(n_cal_values)
+    ax.grid(True, alpha=0.3, linewidth=0.5)
+    if show_xlabel:
+        ax.set_xticklabels([str(v) for v in n_cal_values],
+                           rotation=45, ha="right")
+    else:
+        ax.set_xticklabels([])
+
+    if show_legend:
+        loc = "lower right" if metric == "rocauc" else "upper right"
+        ax.legend(loc=loc, fontsize=7, handlelength=1.5,
+                  borderpad=0.3, labelspacing=0.3)
+
+
 def plot_row(ax_mce, ax_roc, agg, dataset, n_cal_values, raw_rocauc, alpha,
              show_legend=False, show_xlabel=True):
     """Plot one row (MCE + ROCAUC) for a single dataset."""
-    # Theoretical epsilon curve
-    n_cal_smooth = np.logspace(
-        np.log10(min(n_cal_values)), np.log10(max(n_cal_values)), 200
-    )
-    eps_smooth = [compute_theoretical_epsilon(int(n), alpha) for n in n_cal_smooth]
-
-    ax_mce.plot(
-        n_cal_smooth, eps_smooth,
-        color="black", linestyle="--", linewidth=1.2,
-        label=r"Theor. $\varepsilon$", zorder=5,
-    )
-
-    for method in METHODS:
-        mce_means, mce_stds = [], []
-        roc_means, roc_stds = [], []
-        valid_ncals = []
-
-        for n_cal in n_cal_values:
-            key = (method, n_cal, dataset)
-            if key not in agg or not agg[key]["mce"]:
-                continue
-            valid_ncals.append(n_cal)
-            mce_means.append(np.mean(agg[key]["mce"]))
-            mce_stds.append(np.std(agg[key]["mce"]))
-            roc_means.append(np.mean(agg[key]["rocauc"]))
-            roc_stds.append(np.std(agg[key]["rocauc"]))
-
-        valid_ncals = np.array(valid_ncals)
-        mce_means = np.array(mce_means)
-        mce_stds = np.array(mce_stds)
-        roc_means = np.array(roc_means)
-        roc_stds = np.array(roc_stds)
-
-        color = COLORS[method]
-        label = LABELS[method]
-
-        ax_mce.plot(valid_ncals, mce_means, color=color, marker="o",
-                    markersize=3, linewidth=1.2, label=label, zorder=3)
-        ax_mce.fill_between(valid_ncals,
-                            mce_means - mce_stds, mce_means + mce_stds,
-                            color=color, alpha=0.15, zorder=2)
-
-        ax_roc.plot(valid_ncals, roc_means, color=color, marker="o",
-                    markersize=3, linewidth=1.2, label=label, zorder=3)
-        ax_roc.fill_between(valid_ncals,
-                            roc_means - roc_stds, roc_means + roc_stds,
-                            color=color, alpha=0.15, zorder=2)
-
-    ax_roc.axhline(
-        raw_rocauc, color="gray", linestyle="--", linewidth=1.0,
-        label="Raw (no cal.)", zorder=1,
-    )
-
-    for ax in [ax_mce, ax_roc]:
-        ax.set_xscale("log")
-        ax.xaxis.set_major_formatter(ScalarFormatter())
-        ax.set_xticks(n_cal_values)
-        ax.grid(True, alpha=0.3, linewidth=0.5)
-        if show_xlabel:
-            ax.set_xticklabels([str(v) for v in n_cal_values],
-                               rotation=45, ha="right")
-        else:
-            ax.set_xticklabels([])
-
-    if show_legend:
-        ax_mce.legend(loc="upper right", fontsize=7, handlelength=1.5,
-                      borderpad=0.3, labelspacing=0.3)
-        ax_roc.legend(loc="lower right", fontsize=7, handlelength=1.5,
-                      borderpad=0.3, labelspacing=0.3)
+    _plot_metric_on_ax(ax_mce, agg, dataset, n_cal_values, "mce", alpha,
+                       show_epsilon=True, show_legend=show_legend,
+                       show_xlabel=show_xlabel)
+    _plot_metric_on_ax(ax_roc, agg, dataset, n_cal_values, "rocauc", alpha,
+                       show_raw_rocauc=True, raw_rocauc=raw_rocauc,
+                       show_legend=show_legend, show_xlabel=show_xlabel)
 
 
 # ---------- Main figure: DeBERTa, MD, 2x2 ----------
@@ -222,7 +213,6 @@ def plot_main_figure(json_path, output_path):
         axes[row_idx, 0].set_ylabel("MCE")
         axes[row_idx, 1].set_ylabel("ROCAUC")
 
-    # x-label only on bottom row
     for ax in axes[-1]:
         ax.set_xlabel(r"$n_{\mathrm{cal}}$")
 
@@ -233,27 +223,9 @@ def plot_main_figure(json_path, output_path):
     plt.close(fig)
 
 
-# ---------- Appendix figure: all models, compact 6x2 ----------
+# ---------- Appendix: MCE+ROCAUC, 6x2 ----------
 
-def plot_appendix_figure(json_path, output_path, score_filter="md"):
-    """Generate appendix figure: all models, 6 rows x 2 cols, compact."""
-    model_order = ["electra", "bert", "deberta"]
-    dataset_order = ["sst2", "agnews"]
-
-    # Collect per-model aggregations
-    model_aggs = {}
-    for model in model_order:
-        model_agg, n_cal_values, model_raw, alpha, _ = load_and_aggregate(
-            json_path, model_filter=model, score_filter=score_filter
-        )
-        model_aggs[model] = (model_agg, model_raw)
-
-    # Also get n_cal_values and alpha from first load
-    _, n_cal_values, _, alpha, _ = load_and_aggregate(
-        json_path, score_filter=score_filter
-    )
-
-    # Compact style
+def _set_compact_style():
     plt.rcParams.update({
         "font.family": "serif",
         "font.size": 8,
@@ -264,10 +236,28 @@ def plot_appendix_figure(json_path, output_path, score_filter="md"):
         "ytick.labelsize": 7,
     })
 
-    n_rows = len(model_order) * len(dataset_order)  # 6
-    row_h = 1.4
+
+def plot_appendix_mce_rocauc(json_path, output_path, score_filter="md"):
+    """Appendix figure: MCE + ROCAUC, all models, 6 rows x 2 cols."""
+    model_order = ["electra", "bert", "deberta"]
+    dataset_order = ["sst2", "agnews"]
+
+    model_aggs = {}
+    for model in model_order:
+        model_agg, n_cal_values, model_raw, alpha, _ = load_and_aggregate(
+            json_path, model_filter=model, score_filter=score_filter
+        )
+        model_aggs[model] = (model_agg, model_raw)
+
+    _, n_cal_values, _, alpha, _ = load_and_aggregate(
+        json_path, score_filter=score_filter
+    )
+
+    _set_compact_style()
+
+    n_rows = len(model_order) * len(dataset_order)
     fig, axes = plt.subplots(
-        n_rows, 2, figsize=(6.5, row_h * n_rows + 0.5),
+        n_rows, 2, figsize=(6.5, 1.4 * n_rows + 0.5),
     )
     fig.subplots_adjust(
         left=0.13, right=0.97, top=0.94, bottom=0.07,
@@ -278,41 +268,90 @@ def plot_appendix_figure(json_path, output_path, score_filter="md"):
     for model in model_order:
         model_agg, model_raw = model_aggs[model]
         for ds in dataset_order:
-            ds_name = DATASET_NAMES[ds]
-            model_name = MODEL_NAMES[model]
             raw_roc = model_raw.get(ds, 0.0)
-            is_last_row = (row_idx == n_rows - 1)
-            is_first_row = (row_idx == 0)
+            is_last = (row_idx == n_rows - 1)
+            is_first = (row_idx == 0)
 
             plot_row(
                 axes[row_idx, 0], axes[row_idx, 1],
                 model_agg, ds, n_cal_values, raw_roc, alpha,
-                show_legend=is_first_row,
-                show_xlabel=is_last_row,
+                show_legend=is_first, show_xlabel=is_last,
             )
 
-            # Row label as the left subplot ylabel
-            row_label = f"{model_name} — {ds_name}"
+            row_label = f"{MODEL_NAMES[model]} — {DATASET_NAMES[ds]}"
             axes[row_idx, 0].set_ylabel(row_label, fontsize=7.5,
                                          fontweight="bold")
-            # No ylabel on right column
             axes[row_idx, 1].set_ylabel("")
-
             row_idx += 1
 
-    # Column headers on first row only
     axes[0, 0].set_title("MCE", fontsize=9, fontweight="bold")
     axes[0, 1].set_title("ROCAUC", fontsize=9, fontweight="bold")
-
-    # x-label only on bottom
     for ax in axes[-1]:
         ax.set_xlabel(r"$n_{\mathrm{cal}}$", fontsize=8)
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, bbox_inches="tight", dpi=300)
-    print(f"Saved appendix figure ({score_filter}) to {output_path}")
+    print(f"Saved MCE+ROCAUC appendix ({score_filter}) to {output_path}")
     plt.close(fig)
 
+
+# ---------- Appendix: ECE only, 6x1 ----------
+
+def plot_appendix_ece(json_path, output_path, score_filter="md"):
+    """Appendix figure: ECE only, all models, 6 rows x 1 col."""
+    model_order = ["electra", "bert", "deberta"]
+    dataset_order = ["sst2", "agnews"]
+
+    model_aggs = {}
+    for model in model_order:
+        model_agg, n_cal_values, _, alpha, _ = load_and_aggregate(
+            json_path, model_filter=model, score_filter=score_filter
+        )
+        model_aggs[model] = model_agg
+
+    _, n_cal_values, _, alpha, _ = load_and_aggregate(
+        json_path, score_filter=score_filter
+    )
+
+    _set_compact_style()
+
+    n_rows = len(model_order) * len(dataset_order)
+    fig, axes = plt.subplots(
+        n_rows, 1, figsize=(4.5, 1.4 * n_rows + 0.5),
+    )
+    fig.subplots_adjust(
+        left=0.18, right=0.97, top=0.94, bottom=0.08,
+        hspace=0.25,
+    )
+
+    row_idx = 0
+    for model in model_order:
+        model_agg = model_aggs[model]
+        for ds in dataset_order:
+            ax = axes[row_idx]
+            is_last = (row_idx == n_rows - 1)
+            is_first = (row_idx == 0)
+
+            _plot_metric_on_ax(
+                ax, model_agg, ds, n_cal_values, "ece", alpha,
+                show_epsilon=False, show_legend=is_first,
+                show_xlabel=is_last,
+            )
+
+            row_label = f"{MODEL_NAMES[model]} — {DATASET_NAMES[ds]}"
+            ax.set_ylabel(row_label, fontsize=7.5, fontweight="bold")
+            row_idx += 1
+
+    axes[0].set_title("ECE", fontsize=9, fontweight="bold")
+    axes[-1].set_xlabel(r"$n_{\mathrm{cal}}$", fontsize=8)
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, bbox_inches="tight", dpi=300)
+    print(f"Saved ECE appendix ({score_filter}) to {output_path}")
+    plt.close(fig)
+
+
+# ---------- Main ----------
 
 def main():
     parser = argparse.ArgumentParser(
@@ -320,38 +359,36 @@ def main():
     )
     parser.add_argument(
         "--input", type=str, default="results/ncal_ablation/ncal_ablation.json",
-        help="Path to ablation JSON results",
-    )
-    parser.add_argument(
-        "--output-main", type=str,
-        default="docs/paper/figures/ncal_ablation.pdf",
-        help="Output path for main figure (DeBERTa, 2x2)",
-    )
-    parser.add_argument(
-        "--output-appendix-md", type=str,
-        default="docs/paper/figures/ncal_ablation_full.pdf",
-        help="Output path for appendix figure — MD score",
-    )
-    parser.add_argument(
-        "--output-appendix-sp", type=str,
-        default="docs/paper/figures/ncal_ablation_sp.pdf",
-        help="Output path for appendix figure — SP score",
     )
     args = parser.parse_args()
+    json_path = args.input
+    fig_dir = "docs/paper/figures"
 
-    print(f"Loading results from {args.input}")
+    print(f"Loading results from {json_path}")
 
-    # Main figure: DeBERTa, MD only
-    plot_main_figure(args.input, args.output_main)
+    # Main figure: DeBERTa, MD
+    plot_main_figure(json_path, f"{fig_dir}/ncal_ablation.pdf")
 
-    # Appendix: MD (always available)
-    plot_appendix_figure(args.input, args.output_appendix_md, score_filter="md")
+    # Appendix MCE+ROCAUC: MD
+    plot_appendix_mce_rocauc(json_path, f"{fig_dir}/ncal_ablation_full.pdf",
+                             score_filter="md")
 
-    # Appendix: SP (only if data available)
-    if has_score(args.input, "sp"):
-        plot_appendix_figure(args.input, args.output_appendix_sp, score_filter="sp")
+    # Appendix MCE+ROCAUC: SP
+    if has_score(json_path, "sp"):
+        plot_appendix_mce_rocauc(json_path, f"{fig_dir}/ncal_ablation_sp.pdf",
+                                 score_filter="sp")
     else:
-        print("SP score not found in data — skipping SP appendix figure")
+        print("SP score not found — skipping")
+
+    # Appendix ECE (only if data has ECE)
+    if has_metric(json_path, "ece"):
+        plot_appendix_ece(json_path, f"{fig_dir}/ncal_ablation_ece_md.pdf",
+                          score_filter="md")
+        if has_score(json_path, "sp"):
+            plot_appendix_ece(json_path, f"{fig_dir}/ncal_ablation_ece_sp.pdf",
+                              score_filter="sp")
+    else:
+        print("ECE metric not found — skipping ECE figures")
 
 
 if __name__ == "__main__":

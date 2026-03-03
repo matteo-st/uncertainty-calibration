@@ -32,6 +32,8 @@ from sklearn.isotonic import IsotonicRegression
 
 from src.evaluation import (
     compute_rocauc,
+    compute_ece_discrete,
+    compute_ece_uniform_mass,
     compute_mce_discrete,
     compute_mce_uniform_mass,
 )
@@ -215,6 +217,7 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                                 "method": "um",
                                 "rocauc": float(compute_rocauc(test_um, test_errors)),
                                 "mce": float(compute_mce_discrete(test_um, test_errors)),
+                                "ece": float(compute_ece_discrete(test_um, test_errors)),
                             })
 
                             # --- Platt Scaling ---
@@ -229,14 +232,19 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                                 platt_mce = float(compute_mce_uniform_mass(
                                     test_platt, test_errors
                                 ))
+                                platt_ece = float(compute_ece_uniform_mass(
+                                    test_platt, test_errors
+                                ))
                             except Exception:
                                 platt_rocauc = float("nan")
                                 platt_mce = float("nan")
+                                platt_ece = float("nan")
                             results.append({
                                 **base_entry,
                                 "method": "platt",
                                 "rocauc": platt_rocauc,
                                 "mce": platt_mce,
+                                "ece": platt_ece,
                             })
 
                             # --- Isotonic Regression ---
@@ -248,14 +256,19 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                                 iso_mce = float(compute_mce_uniform_mass(
                                     test_iso, test_errors
                                 ))
+                                iso_ece = float(compute_ece_uniform_mass(
+                                    test_iso, test_errors
+                                ))
                             except Exception:
                                 iso_rocauc = float("nan")
                                 iso_mce = float("nan")
+                                iso_ece = float("nan")
                             results.append({
                                 **base_entry,
                                 "method": "isotonic",
                                 "rocauc": iso_rocauc,
                                 "mce": iso_mce,
+                                "ece": iso_ece,
                             })
 
                 print(f"  Done: {len(SCORES)} scores × "
@@ -286,24 +299,25 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
 
     # Print summary per score
     for score_name in SCORES:
-        print(f"\n{'='*70}")
-        print(f"SUMMARY [{score_name.upper()}]: Mean MCE by method and n_cal")
-        print(f"{'='*70}")
-        print(f"{'n_cal':>8} {'UM MCE':>10} {'Platt MCE':>10} {'Iso MCE':>10} {'epsilon':>10}")
-        print("-" * 50)
+        for metric in ["mce", "ece"]:
+            print(f"\n{'='*70}")
+            print(f"SUMMARY [{score_name.upper()}]: Mean {metric.upper()} by method and n_cal")
+            print(f"{'='*70}")
+            print(f"{'n_cal':>8} {'UM':>10} {'Platt':>10} {'Isotonic':>10} {'epsilon':>10}")
+            print("-" * 50)
 
-        score_results = [r for r in results if r["score"] == score_name]
-        for n_cal in n_cal_values:
-            rows = [r for r in score_results if r["n_cal"] == n_cal]
-            mce_by_method = {}
-            for method in ["um", "platt", "isotonic"]:
-                method_rows = [r for r in rows if r["method"] == method]
-                mces = [r["mce"] for r in method_rows if not math.isnan(r["mce"])]
-                mce_by_method[method] = np.mean(mces) if mces else float("nan")
-            eps = theoretical_epsilon.get(n_cal, float("nan"))
-            print(f"{n_cal:>8} {mce_by_method['um']:>10.4f} "
-                  f"{mce_by_method['platt']:>10.4f} "
-                  f"{mce_by_method['isotonic']:>10.4f} {eps:>10.4f}")
+            score_results = [r for r in results if r["score"] == score_name]
+            for n_cal in n_cal_values:
+                rows = [r for r in score_results if r["n_cal"] == n_cal]
+                vals = {}
+                for method in ["um", "platt", "isotonic"]:
+                    method_rows = [r for r in rows if r["method"] == method]
+                    v = [r[metric] for r in method_rows if not math.isnan(r[metric])]
+                    vals[method] = np.mean(v) if v else float("nan")
+                eps = theoretical_epsilon.get(n_cal, float("nan"))
+                print(f"{n_cal:>8} {vals['um']:>10.4f} "
+                      f"{vals['platt']:>10.4f} "
+                      f"{vals['isotonic']:>10.4f} {eps:>10.4f}")
 
 
 def main():
