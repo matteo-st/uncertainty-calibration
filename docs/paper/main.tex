@@ -596,7 +596,7 @@ After uniform-mass calibration, the score takes finitely many discrete values, s
 
 \paragraph{Calibrated scores preserve discrimination.}
 Table~\ref{tab:main_results} reports ROCAUC before and after uniform-mass (UM) calibration for each (dataset, model) pair.
-The average ROCAUC change after calibration is $-0.017$ for SP and $-0.021$ for MD.
+The average ROCAUC change after calibration is $-0.014$ for SP and $-0.020$ for MD.
 These small drops are intrinsic to any binning-based method: mapping multiple score values to a single calibrated value creates ties that can reduce ranking quality.
 Despite this, the calibrated scores remain strongly discriminative.
 
@@ -606,8 +606,8 @@ This is consistent with previous findings that density-based scores capture info
 After UM calibration, MD retains its advantage in most settings.
 
 \paragraph{Low calibration error after UM calibration.}
-MCE after UM calibration is consistently low: $0.140$ on average for SP and $0.155$ for MD (Table~\ref{tab:main_results}).
-For SP---the only score directly interpretable as an error probability before calibration---raw MCE averages $0.347$, showing that UM calibration substantially reduces miscalibration.
+MCE after UM calibration is consistently low: $0.127$ on average for SP and $0.144$ for MD (Table~\ref{tab:main_results}).
+For SP---the only score directly interpretable as an error probability before calibration---raw MCE averages $0.367$, showing that UM calibration substantially reduces miscalibration.
 Raw MD scores are unbounded and not directly interpretable as probabilities; UM calibration maps them to the $[0,1]$ interval with empirical error rates.
 
 \paragraph{Comparison with parametric and nonparametric baselines.}
@@ -618,7 +618,7 @@ The full per-model breakdown is in Appendix~\ref{app:ncal_ablation}.
 
 UM's empirical MCE remains below the theoretical bound~$\varepsilon(n_{\mathrm{cal}})$ for $n_{\mathrm{cal}} \leq 5000$ on both datasets, confirming the finite-sample guarantee of Theorem~\ref{thm:unif-mass_calibration}.
 At $n_{\mathrm{cal}} = 10{,}000$ the mean empirical MCE slightly exceeds~$\varepsilon$; this is expected since~$\varepsilon$ bounds the population MCE, while the empirical estimate on finite test sets becomes noisier as the number of bins~$B$ grows.
-Platt scaling yields the highest MCE, reaching $0.28$ at $n_{\mathrm{cal}} = 10{,}000$, reflecting the rigidity of its parametric sigmoid form.
+Platt scaling yields the highest MCE, reaching $0.24$ at $n_{\mathrm{cal}} = 10{,}000$, reflecting the rigidity of its parametric sigmoid form.
 Isotonic regression achieves the lowest MCE across most calibration set sizes but lacks theoretical guarantees.
 All three methods show degraded ROCAUC at small~$n_{\mathrm{cal}}$ due to estimation noise, but converge toward the raw score's discrimination for $n_{\mathrm{cal}} \geq 1000$.
 
@@ -634,7 +634,7 @@ All three methods show degraded ROCAUC at small~$n_{\mathrm{cal}}$ due to estima
 
 We studied the construction of uncertainty scores that are simultaneously discriminative for misclassification detection and calibrated as failure-risk estimates with distribution-free guarantees.
 On the theoretical side, we established an impossibility result for individual calibration (Theorem~\ref{thm:indiv_calib_imp}), motivated score calibration as the appropriate relaxation, and proved minimax optimality of the uniform-mass calibration rate (Theorem~\ref{thm:minmax}).
-On the empirical side, experiments on four text classification benchmarks with three models and five uncertainty scores confirm that uniform-mass calibration provides low maximum calibration error (MCE $\approx 0.06$--$0.29$) while preserving discrimination (average ROCAUC drop $<0.02$).
+On the empirical side, experiments on four text classification benchmarks with three models and five uncertainty scores confirm that uniform-mass calibration provides low maximum calibration error (MCE $\approx 0.03$--$0.32$) while preserving discrimination (average ROCAUC drop $<0.02$).
 
 Future work includes tightening the finite-sample bounds via sharper one-sided binomial inequalities (e.g., Clopper--Pearson, empirical Bernstein), and adapting the number of samples per bin to the difficulty of the estimation problem. Extensions to multi-class calibration and to settings with distribution shift are also promising directions.
 
