@@ -4,7 +4,7 @@ n_cal ablation: evaluate calibration methods across calibration set sizes.
 
 For each n_cal value, samples calibration sets from the pool (original cal +
 unused training data), fits UM/Platt/Isotonic on that sample, and evaluates
-on the fixed test set. Uses MD score only.
+on the fixed test set. Runs both MD and SP scores.
 
 Requires: cache_unused_samples.py must have been run first to produce
 the *_unused.npz files for SST-2 and AG News.
@@ -43,6 +43,7 @@ DATASETS = ["sst2", "agnews"]
 MODEL_SHORT_NAMES = ["electra", "bert", "deberta"]
 SEEDS = [42, 123, 456]
 N_CAL_VALUES = [50, 100, 200, 500, 1000, 2000, 5000, 10000]
+SCORES = ["md", "sp"]
 ALPHA = 0.05  # confidence level for UM guarantee
 
 
@@ -94,6 +95,23 @@ def compute_theoretical_epsilon(n_cal, alpha=0.05):
     return epsilon
 
 
+# --- Score extraction ---
+
+def extract_sp_scores(data):
+    """Extract softmax probability score: SP = 1 - max(probs)."""
+    return 1.0 - np.max(data["probs"], axis=1)
+
+
+def extract_scores(data, score_name):
+    """Extract scores from cached data by name."""
+    if score_name == "md":
+        return data["md_scores"]
+    elif score_name == "sp":
+        return extract_sp_scores(data)
+    else:
+        raise ValueError(f"Unknown score: {score_name}")
+
+
 # --- Main ablation logic ---
 
 def load_npz(path):
@@ -138,124 +156,110 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                 unused_data = load_npz(unused_path)
                 test_data = load_npz(test_path)
 
-                # Build calibration pool: cal + unused
-                pool_md = np.concatenate([
-                    cal_data["md_scores"], unused_data["md_scores"]
-                ])
+                # Errors for pool and test (shared across scores)
                 pool_errors = np.concatenate([
                     (cal_data["predictions"] != cal_data["labels"]).astype(float),
                     (unused_data["predictions"] != unused_data["labels"]).astype(float),
                 ])
-                pool_size = len(pool_md)
-
-                # Fixed test set
-                test_md = test_data["md_scores"]
                 test_errors = (
                     test_data["predictions"] != test_data["labels"]
                 ).astype(float)
 
-                # Raw ROCAUC (before any calibration)
-                raw_rocauc = compute_rocauc(test_md, test_errors)
+                for score_name in SCORES:
+                    # Build score pools and test scores
+                    pool_scores = np.concatenate([
+                        extract_scores(cal_data, score_name),
+                        extract_scores(unused_data, score_name),
+                    ])
+                    test_scores = extract_scores(test_data, score_name)
+                    pool_size = len(pool_scores)
 
-                print(f"  Pool size: {pool_size}, test size: {len(test_md)}, "
-                      f"raw ROCAUC: {raw_rocauc:.4f}")
+                    # Raw ROCAUC (before any calibration)
+                    raw_rocauc = compute_rocauc(test_scores, test_errors)
 
-                for n_cal in n_cal_values:
-                    if n_cal > pool_size:
-                        print(f"  SKIP n_cal={n_cal} > pool_size={pool_size}")
-                        continue
+                    print(f"  [{score_name.upper()}] Pool: {pool_size}, "
+                          f"test: {len(test_scores)}, raw ROCAUC: {raw_rocauc:.4f}")
 
-                    for draw in range(n_draws):
-                        # Sample n_cal from pool
-                        rng = np.random.RandomState(seed * 1000 + draw)
-                        idx = rng.choice(pool_size, n_cal, replace=False)
-                        cal_scores_sample = pool_md[idx]
-                        cal_errors_sample = pool_errors[idx]
-
-                        # Skip if all errors are same class (ROCAUC undefined)
-                        if len(np.unique(cal_errors_sample)) < 2:
+                    for n_cal in n_cal_values:
+                        if n_cal > pool_size:
+                            print(f"    SKIP n_cal={n_cal} > pool_size={pool_size}")
                             continue
 
-                        # --- Uniform Mass (discrete output) ---
-                        # MCE via level sets: group by the B distinct
-                        # calibrated values produced by UM.
-                        um = UniformMassCalibration()
-                        um.fit(cal_scores_sample, cal_errors_sample)
-                        test_um = um.calibrate(test_md)
-                        um_rocauc = compute_rocauc(test_um, test_errors)
-                        um_mce = compute_mce_discrete(test_um, test_errors)
+                        for draw in range(n_draws):
+                            # Sample n_cal from pool (same RNG per draw for reproducibility)
+                            rng = np.random.RandomState(seed * 1000 + draw)
+                            idx = rng.choice(pool_size, n_cal, replace=False)
+                            cal_scores_sample = pool_scores[idx]
+                            cal_errors_sample = pool_errors[idx]
 
-                        results.append({
-                            "dataset": dataset,
-                            "model": model_short,
-                            "seed": seed,
-                            "n_cal": n_cal,
-                            "draw": draw,
-                            "method": "um",
-                            "rocauc": float(um_rocauc),
-                            "mce": float(um_mce),
-                            "raw_rocauc": float(raw_rocauc),
-                        })
+                            # Skip if all errors are same class
+                            if len(np.unique(cal_errors_sample)) < 2:
+                                continue
 
-                        # --- Platt Scaling (continuous output) ---
-                        # MCE via uniform-mass binning on the test set;
-                        # B = int(2 * n_test^(1/3)) by default.
-                        try:
-                            a, b, mu, sigma = fit_platt_general(
-                                cal_scores_sample, cal_errors_sample
-                            )
-                            test_platt = calibrate_platt_general(
-                                test_md, a, b, mu, sigma
-                            )
-                            platt_rocauc = compute_rocauc(test_platt, test_errors)
-                            platt_mce = compute_mce_uniform_mass(
-                                test_platt, test_errors
-                            )
-                        except Exception:
-                            platt_rocauc = float("nan")
-                            platt_mce = float("nan")
+                            base_entry = {
+                                "dataset": dataset,
+                                "model": model_short,
+                                "seed": seed,
+                                "score": score_name,
+                                "n_cal": n_cal,
+                                "draw": draw,
+                                "raw_rocauc": float(raw_rocauc),
+                            }
 
-                        results.append({
-                            "dataset": dataset,
-                            "model": model_short,
-                            "seed": seed,
-                            "n_cal": n_cal,
-                            "draw": draw,
-                            "method": "platt",
-                            "rocauc": float(platt_rocauc),
-                            "mce": float(platt_mce),
-                            "raw_rocauc": float(raw_rocauc),
-                        })
+                            # --- Uniform Mass ---
+                            um = UniformMassCalibration()
+                            um.fit(cal_scores_sample, cal_errors_sample)
+                            test_um = um.calibrate(test_scores)
+                            results.append({
+                                **base_entry,
+                                "method": "um",
+                                "rocauc": float(compute_rocauc(test_um, test_errors)),
+                                "mce": float(compute_mce_discrete(test_um, test_errors)),
+                            })
 
-                        # --- Isotonic Regression (continuous output) ---
-                        # Isotonic regression interpolates linearly between
-                        # knots, producing continuous output on continuous
-                        # input. MCE via uniform-mass binning on n_test.
-                        try:
-                            iso = IsotonicRegression(out_of_bounds="clip")
-                            iso.fit(cal_scores_sample, cal_errors_sample)
-                            test_iso = iso.predict(test_md)
-                            iso_rocauc = compute_rocauc(test_iso, test_errors)
-                            iso_mce = compute_mce_uniform_mass(
-                                test_iso, test_errors
-                            )
-                        except Exception:
-                            iso_rocauc = float("nan")
-                            iso_mce = float("nan")
+                            # --- Platt Scaling ---
+                            try:
+                                a, b, mu, sigma = fit_platt_general(
+                                    cal_scores_sample, cal_errors_sample
+                                )
+                                test_platt = calibrate_platt_general(
+                                    test_scores, a, b, mu, sigma
+                                )
+                                platt_rocauc = float(compute_rocauc(test_platt, test_errors))
+                                platt_mce = float(compute_mce_uniform_mass(
+                                    test_platt, test_errors
+                                ))
+                            except Exception:
+                                platt_rocauc = float("nan")
+                                platt_mce = float("nan")
+                            results.append({
+                                **base_entry,
+                                "method": "platt",
+                                "rocauc": platt_rocauc,
+                                "mce": platt_mce,
+                            })
 
-                        results.append({
-                            "dataset": dataset,
-                            "model": model_short,
-                            "seed": seed,
-                            "n_cal": n_cal,
-                            "draw": draw,
-                            "method": "isotonic",
-                            "rocauc": float(iso_rocauc),
-                            "mce": float(iso_mce),
-                            "raw_rocauc": float(raw_rocauc),
-                        })
+                            # --- Isotonic Regression ---
+                            try:
+                                iso = IsotonicRegression(out_of_bounds="clip")
+                                iso.fit(cal_scores_sample, cal_errors_sample)
+                                test_iso = iso.predict(test_scores)
+                                iso_rocauc = float(compute_rocauc(test_iso, test_errors))
+                                iso_mce = float(compute_mce_uniform_mass(
+                                    test_iso, test_errors
+                                ))
+                            except Exception:
+                                iso_rocauc = float("nan")
+                                iso_mce = float("nan")
+                            results.append({
+                                **base_entry,
+                                "method": "isotonic",
+                                "rocauc": iso_rocauc,
+                                "mce": iso_mce,
+                            })
 
-                print(f"  Done: {len(n_cal_values)} n_cal values × {n_draws} draws")
+                print(f"  Done: {len(SCORES)} scores × "
+                      f"{len(n_cal_values)} n_cal × {n_draws} draws")
 
     # Save results
     os.makedirs(output_dir, exist_ok=True)
@@ -264,6 +268,7 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
             "datasets": DATASETS,
             "models": MODEL_SHORT_NAMES,
             "seeds": SEEDS,
+            "scores": SCORES,
             "n_cal_values": n_cal_values,
             "n_draws": n_draws,
             "alpha": ALPHA,
@@ -279,26 +284,26 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
         json.dump(output, f, indent=2)
     print(f"\nSaved {len(results)} result rows to {json_path}")
 
-    # Print summary
-    print(f"\n{'='*70}")
-    print("SUMMARY: Mean MCE by method and n_cal")
-    print(f"{'='*70}")
-    print(f"{'n_cal':>8} {'UM MCE':>10} {'Platt MCE':>10} {'Iso MCE':>10} {'epsilon':>10}")
-    print("-" * 50)
+    # Print summary per score
+    for score_name in SCORES:
+        print(f"\n{'='*70}")
+        print(f"SUMMARY [{score_name.upper()}]: Mean MCE by method and n_cal")
+        print(f"{'='*70}")
+        print(f"{'n_cal':>8} {'UM MCE':>10} {'Platt MCE':>10} {'Iso MCE':>10} {'epsilon':>10}")
+        print("-" * 50)
 
-    for n_cal in n_cal_values:
-        rows = [r for r in results if r["n_cal"] == n_cal]
-        for method in ["um", "platt", "isotonic"]:
-            method_rows = [r for r in rows if r["method"] == method]
-            mces = [r["mce"] for r in method_rows if not math.isnan(r["mce"])]
-            if method == "um":
-                um_mce = np.mean(mces) if mces else float("nan")
-            elif method == "platt":
-                platt_mce = np.mean(mces) if mces else float("nan")
-            else:
-                iso_mce = np.mean(mces) if mces else float("nan")
-        eps = theoretical_epsilon.get(n_cal, float("nan"))
-        print(f"{n_cal:>8} {um_mce:>10.4f} {platt_mce:>10.4f} {iso_mce:>10.4f} {eps:>10.4f}")
+        score_results = [r for r in results if r["score"] == score_name]
+        for n_cal in n_cal_values:
+            rows = [r for r in score_results if r["n_cal"] == n_cal]
+            mce_by_method = {}
+            for method in ["um", "platt", "isotonic"]:
+                method_rows = [r for r in rows if r["method"] == method]
+                mces = [r["mce"] for r in method_rows if not math.isnan(r["mce"])]
+                mce_by_method[method] = np.mean(mces) if mces else float("nan")
+            eps = theoretical_epsilon.get(n_cal, float("nan"))
+            print(f"{n_cal:>8} {mce_by_method['um']:>10.4f} "
+                  f"{mce_by_method['platt']:>10.4f} "
+                  f"{mce_by_method['isotonic']:>10.4f} {eps:>10.4f}")
 
 
 def main():
@@ -317,6 +322,7 @@ def main():
     print(f"  Datasets: {DATASETS}")
     print(f"  Models: {MODEL_SHORT_NAMES}")
     print(f"  Seeds: {SEEDS}")
+    print(f"  Scores: {SCORES}")
     print(f"  n_cal values: {N_CAL_VALUES}")
     print(f"  Draws per n_cal: {args.n_draws}")
     print(f"  Cache dir: {cache_dir}")

@@ -1,0 +1,56 @@
+% Hyperparameter search ranges and selected values
+% Panel (a): search ranges; Panel (b): selected hyperparameters per (dataset, model)
+\begin{table}[h]
+\centering
+\caption{Hyperparameter search configuration and selected values.
+Bayesian optimization (Optuna TPE, 20 trials per pair) maximizes validation accuracy on an 80/20 internal split of the training data.
+After selection, models are re-trained on the full training set with the chosen hyperparameters.
+Warmup ratio is fixed at 0.1 throughout.}
+\label{tab:hyperparameters}
+\small
+\begin{subtable}[t]{\linewidth}
+\centering
+\caption{Search ranges per model family.}
+\label{tab:hp_ranges}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Hyperparameter} & \textbf{ELECTRA / BERT} & \textbf{DeBERTa-v3} \\
+\midrule
+Learning rate     & $[5{\times}10^{-6},\; 10^{-4}]$ (log) & $[10^{-5},\; 5{\times}10^{-5}]$ (log) \\
+Batch size        & \{4, 16, 32, 64\}           & \{16, 32, 64\}             \\
+Weight decay      & $[0,\; 0.1]$                 & $[0,\; 0.05]$              \\
+Number of epochs  & $[3,\; 15]$                  & $[3,\; 15]$                \\
+\bottomrule
+\end{tabular}
+\end{subtable}
+
+\vspace{1em}
+
+\begin{subtable}[t]{\linewidth}
+\centering
+\caption{Selected hyperparameters per (dataset, model) pair.}
+\label{tab:hp_selected}
+\footnotesize
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+\textbf{Dataset} & \textbf{Model} & \textbf{LR} & \textbf{BS} & \textbf{Epochs} & \textbf{WD} \\
+\midrule
+MRPC    & ELECTRA & 2.44e-5 & 4  & 12 & 0.082 \\
+        & BERT    & 1.54e-5 & 4  & 15 & 0.006 \\
+        & DeBERTa & 3.82e-5 & 64 & 5  & 0.026 \\
+\midrule
+SST-2   & ELECTRA & 2.33e-5 & 64 & 12 & 0.075 \\
+        & BERT    & 4.33e-5 & 64 & 9  & 0.068 \\
+        & DeBERTa & 3.82e-5 & 64 & 5  & 0.026 \\
+\midrule
+CoLA    & ELECTRA & 1.01e-5 & 16 & 14 & 0.039 \\
+        & BERT    & 3.05e-5 & 64 & 12 & 0.033 \\
+        & DeBERTa & 1.63e-5 & 16 & 4  & 0.025 \\
+\midrule
+AG News & ELECTRA & 9.39e-5 & 64 & 11 & 0.010 \\
+        & BERT    & 5.77e-5 & 64 & 12 & 0.017 \\
+        & DeBERTa & 2.75e-5 & 32 & 12 & 0.034 \\
+\bottomrule
+\end{tabular}
+\end{subtable}
+\end{table}

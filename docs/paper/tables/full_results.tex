@@ -1,10 +1,15 @@
 % Full results table for appendix: all 5 scores, all 12 (dataset, model) pairs
+% Split into two tables to fit on separate pages
 % Mean ± std over 3 seeds
-\begin{table*}[t]
+
+\begin{table*}[h]
 \centering
-\caption{Full results for all uncertainty scores before and after uniform-mass (UM) calibration. SP, PE, and Doctor are equivalent up to monotone transforms for binary tasks ($K=2$), confirmed by near-identical ROCAUC values across MRPC, SST-2, and CoLA. Results are mean $\pm$ std over 3 seeds.}
+\caption{Full results for all uncertainty scores before and after uniform-mass (UM) calibration --- binary tasks ($K{=}2$).
+SP, PE, and Doctor are equivalent up to monotone transforms for $K{=}2$, confirmed by near-identical ROCAUC values.
+Results are mean $\pm$ std over 3 seeds.}
 \label{tab:full_results}
-\resizebox{\textwidth}{!}{%
+\footnotesize
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{@{}llccccc@{}}
 \toprule
 \textbf{Dataset} & \textbf{Model} & \textbf{Score} & \textbf{ROCAUC} & \textbf{ROCAUC\textsuperscript{UM}} & \textbf{ECE\textsuperscript{UM}} & \textbf{MCE\textsuperscript{UM}} \\
@@ -62,6 +67,18 @@ CoLA & ELECTRA & SP & .750{\scriptsize$\pm$.037} & .736{\scriptsize$\pm$.036} & 
  &  & Doctor & .798{\scriptsize$\pm$.018} & .782{\scriptsize$\pm$.020} & .046{\scriptsize$\pm$.015} & .123{\scriptsize$\pm$.057} \\
  &  & Energy & .779{\scriptsize$\pm$.014} & .789{\scriptsize$\pm$.009} & .042{\scriptsize$\pm$.007} & .127{\scriptsize$\pm$.044} \\
  &  & MD & .798{\scriptsize$\pm$.013} & .769{\scriptsize$\pm$.018} & .047{\scriptsize$\pm$.007} & .132{\scriptsize$\pm$.023} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[h]
+\centering
+\caption*{Table~\ref{tab:full_results} (continued) --- multiclass task ($K{=}4$).}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+\textbf{Dataset} & \textbf{Model} & \textbf{Score} & \textbf{ROCAUC} & \textbf{ROCAUC\textsuperscript{UM}} & \textbf{ECE\textsuperscript{UM}} & \textbf{MCE\textsuperscript{UM}} \\
 \midrule
 AG News & ELECTRA & SP & .801{\scriptsize$\pm$.027} & .787{\scriptsize$\pm$.036} & .027{\scriptsize$\pm$.011} & .085{\scriptsize$\pm$.025} \\
  &  & PE & .800{\scriptsize$\pm$.028} & .790{\scriptsize$\pm$.029} & .025{\scriptsize$\pm$.008} & .086{\scriptsize$\pm$.026} \\
@@ -81,6 +98,5 @@ AG News & ELECTRA & SP & .801{\scriptsize$\pm$.027} & .787{\scriptsize$\pm$.036}
  &  & Energy & .776{\scriptsize$\pm$.020} & .771{\scriptsize$\pm$.046} & .023{\scriptsize$\pm$.002} & .083{\scriptsize$\pm$.021} \\
  &  & MD & .839{\scriptsize$\pm$.006} & .825{\scriptsize$\pm$.011} & .017{\scriptsize$\pm$.003} & .062{\scriptsize$\pm$.016} \\
 \bottomrule
-\end{tabular}%
-}
+\end{tabular}
 \end{table*}

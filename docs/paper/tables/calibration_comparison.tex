@@ -1,30 +1,24 @@
-% Calibration method comparison: aggregated over 36 experiments (4 datasets × 3 models × 3 seeds)
+% Calibration method comparison: SP and MD, aggregated over 36 experiments
 \begin{table}[t]
 \centering
 \caption{Comparison of calibration methods, aggregated over all 36 experiments.
 UM is the uniform-mass calibrator (Theorem~\ref{thm:unif-mass_calibration}); Platt fits $\sigma(a z + b)$ with standardized scores; Isotonic uses isotonic regression.
-$\epsilon = 0.255$ is the theoretical bound from Theorem~\ref{thm:unif-mass_calibration} with $n=1{,}000$, $B=19$, $\alpha=0.05$.
-MCE${\le}\epsilon$ reports the fraction of experiments satisfying the guarantee.}
+Additional scores (PE, Doctor, Energy) are reported in Appendix~\ref{app:full_results}.}
 \label{tab:calibration_comparison}
 \small
-\begin{tabular}{@{}llcccc@{}}
+\begin{tabular}{@{}llccc@{}}
 \toprule
-\textbf{Score} & \textbf{Method} & \textbf{ROCAUC}$\uparrow$ & \textbf{ECE}$\downarrow$ & \textbf{MCE}$\downarrow$ & \textbf{MCE${\le}\epsilon$} \\
+\textbf{Score} & \textbf{Method} & \textbf{ROCAUC}$\uparrow$ & \textbf{ECE}$\downarrow$ & \textbf{MCE}$\downarrow$ \\
 \midrule
-SP & Raw      & .792 & .097 & .347 & 25\% \\
-   & UM       & .775 & \textbf{.038} & \textbf{.140} & \textbf{94\%} \\
-   & Platt    & \textbf{.792} & .073 & .249 & 50\% \\
-   & Isotonic & .788 & .028 & .126 & 92\% \\
+SP & Raw & .792 & .097 & .347 \\
+ & UM & .775 & .038 & .140 \\
+ & Platt & .792 & .073 & .249 \\
+ & Isotonic & .788 & .027 & .126 \\
 \midrule
-Energy & Raw      & .778 & ---  & ---  & --- \\
-       & UM       & .771 & .036 & \textbf{.139} & \textbf{100\%} \\
-       & Platt    & \textbf{.778} & .049 & .179 & 86\% \\
-       & Isotonic & .778 & \textbf{.026} & .130 & 86\% \\
-\midrule
-MD & Raw      & .821 & ---  & ---  & --- \\
-   & UM       & .800 & .037 & .155 & 86\% \\
-   & Platt    & \textbf{.821} & .068 & .225 & 61\% \\
-   & Isotonic & .814 & \textbf{.025} & \textbf{.142} & \textbf{94\%} \\
+MD & Raw & .821 & --- & --- \\
+ & UM & .800 & .037 & .155 \\
+ & Platt & .821 & .068 & .225 \\
+ & Isotonic & .814 & .025 & .141 \\
 \bottomrule
 \end{tabular}
 \end{table}

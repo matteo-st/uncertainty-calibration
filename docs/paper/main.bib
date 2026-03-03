@@ -359,39 +359,10 @@ eprint = {
 
 }
 
-@book{devroye2013probabilistic,
-  title={A Probabilistic Theory of Pattern Recognition},
-  author={Devroye, L. and Gy{\"o}rfi, L. and Lugosi, G.},
-  isbn={9781461207115},
-  lccn={95044633},
-  series={Stochastic Modelling and Applied Probability},
-  url={https://books.google.fr/books?id=Y5bxBwAAQBAJ},
-  year={1996},
-  publisher={Springer New York}
-}
-
-@book{Vovk2022,
-  title     = {Algorithmic Learning in a Random World},
-  author    = {Vladimir Vovk and Alexander Gammerman and Glenn Shafer},
-  edition   = {Second},
-  publisher = {Springer International Publishing},
-  year      = {2022},
-  doi       = {10.1007/978-3-031-06649-8},
-  isbn      = {978-3-031-06648-1},
-  url       = {https://link.springer.com/book/10.1007/978-3-031-06649-8}
-}
 
 
 
-@misc{bengio2024bayesianoraclepreventharm,
-      title={Can a Bayesian Oracle Prevent Harm from an Agent?}, 
-      author={Yoshua Bengio and Michael K. Cohen and Nikolay Malkin and Matt MacDermott and Damiano Fornasiere and Pietro Greiner and Younesse Kaddar},
-      year={2024},
-      eprint={2408.05284},
-      archivePrefix={arXiv},
-      primaryClass={cs.AI},
-      url={https://arxiv.org/abs/2408.05284}, 
-}
+
 
 @misc{gupta2022distributionfreebinaryclassificationprediction,
       title={Distribution-free binary classification: prediction sets, confidence intervals and calibration}, 
@@ -403,52 +374,14 @@ eprint = {
       url={https://arxiv.org/abs/2006.10564}, 
 }
 
-@article{wasserman2014,
-    author = {Lei, Jing and Wasserman, Larry},
-    title = {Distribution-free Prediction Bands for Non-parametric Regression},
-    journal = {Journal of the Royal Statistical Society Series B: Statistical Methodology},
-    volume = {76},
-    number = {1},
-    pages = {71-96},
-    year = {2013},
-    month = {07},
-    abstract = {We study distribution-free, non-parametric prediction bands with a focus on their finite sample behaviour. First we investigate and develop different notions of finite sample coverage guarantees. Then we give a new prediction band by combining the idea of ‘conformal prediction’ with non-parametric conditional density estimation. The proposed estimator, called COPS (conformal optimized prediction set), always has a finite sample guarantee. Under regularity conditions the estimator converges to an oracle band at a minimax optimal rate. A fast approximation algorithm and a data-driven method for selecting the bandwidth are developed. The method is illustrated in simulated and real data examples.},
-    issn = {1369-7412},
-    doi = {10.1111/rssb.12021},
-    url = {https://doi.org/10.1111/rssb.12021},
-    eprint = {https://academic.oup.com/jrsssb/article-pdf/76/1/71/49514328/jrsssb\_76\_1\_71.pdf},
-}
 
 
 
 
 
-@article{HAGERUP1990305,
-title = {A guided tour of chernoff bounds},
-journal = {Information Processing Letters},
-volume = {33},
-number = {6},
-pages = {305-308},
-year = {1990},
-issn = {0020-0190},
-doi = {https://doi.org/10.1016/0020-0190(90)90214-I},
-url = {https://www.sciencedirect.com/science/article/pii/002001909090214I},
-author = {Torben Hagerup and Christine Rüb},
-keywords = {Chernoff bounds, coin tossing, Bernoulli trials, probabilistic analysis},
-abstract = {We give elementary derivations of the various inequalities collectively known as Chernoff bounds. Chernoff bounds are strong upper bounds on the probability of obtaining very few or very many heads in series of independent coin tossings. This note aims at making known results and their proofs accessible to a wider audience; it contains little or no new material.}
-}
 
 
 
-@misc{rossellini2025calibrationmetrictestableactionable,
-      title={Can a calibration metric be both testable and actionable?}, 
-      author={Raphael Rossellini and Jake A. Soloff and Rina Foygel Barber and Zhimei Ren and Rebecca Willett},
-      year={2025},
-      eprint={2502.19851},
-      archivePrefix={arXiv},
-      primaryClass={stat.ME},
-      url={https://arxiv.org/abs/2502.19851}, 
-}
 
 
 %% Concentration
@@ -1444,236 +1377,22 @@ abstract = {Machine learning (ML) models always make a prediction, even when the
 }
 
 
-@article{tasche_calibrating_2021,
-	title = {Calibrating sufficiently},
-	volume = {55},
-	issn = {0233-1888, 1029-4910},
-	url = {http://arxiv.org/abs/2105.07283},
-	doi = {10.1080/02331888.2021.2016767},
-	abstract = {When probabilistic classifiers are trained and calibrated, the so-called grouping loss component of the calibration loss can easily be overlooked. Grouping loss refers to the gap between observable information and information actually exploited in the calibration exercise. We investigate the relation between grouping loss and the concept of sufficiency, identifying comonotonicity as a useful criterion for sufficiency. We revisit the probing reduction approach of Langford \& Zadrozny (2005) and find that it produces an estimator of probabilistic classifiers that reduces grouping loss. Finally, we discuss Brier curves as tools to support training and 'sufficient' calibration of probabilistic classifiers.},
-	number = {6},
-	urldate = {2025-12-01},
-	journal = {Statistics},
-	author = {Tasche, Dirk},
-	month = nov,
-	year = {2021},
-	note = {arXiv:2105.07283 [stat]},
-	keywords = {Computer Science - Machine Learning, Statistics - Machine Learning, Mathematics - Statistics Theory},
-	pages = {1356--1386},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\XU7BJBYA\\Tasche - 2021 - Calibrating sufficiently.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\RMPBXDGX\\2105.html:text/html},
-}
 
-@misc{arrieta-ibarra_metrics_2022,
-	title = {Metrics of calibration for probabilistic predictions},
-	url = {http://arxiv.org/abs/2205.09680},
-	doi = {10.48550/arXiv.2205.09680},
-	abstract = {Predictions are often probabilities; e.g., a prediction could be for precipitation tomorrow, but with only a 30\% chance. Given such probabilistic predictions together with the actual outcomes, "reliability diagrams" help detect and diagnose statistically significant discrepancies -- so-called "miscalibration" -- between the predictions and the outcomes. The canonical reliability diagrams histogram the observed and expected values of the predictions; replacing the hard histogram binning with soft kernel density estimation is another common practice. But, which widths of bins or kernels are best? Plots of the cumulative differences between the observed and expected values largely avoid this question, by displaying miscalibration directly as the slopes of secant lines for the graphs. Slope is easy to perceive with quantitative precision, even when the constant offsets of the secant lines are irrelevant; there is no need to bin or perform kernel density estimation. The existing standard metrics of miscalibration each summarize a reliability diagram as a single scalar statistic. The cumulative plots naturally lead to scalar metrics for the deviation of the graph of cumulative differences away from zero; good calibration corresponds to a horizontal, flat graph which deviates little from zero. The cumulative approach is currently unconventional, yet offers many favorable statistical properties, guaranteed via mathematical theory backed by rigorous proofs and illustrative numerical examples. In particular, metrics based on binning or kernel density estimation unavoidably must trade-off statistical confidence for the ability to resolve variations as a function of the predicted probability or vice versa. Widening the bins or kernels averages away random noise while giving up some resolving power. Narrowing the bins or kernels enhances resolving power while not averaging away as much noise.},
-	urldate = {2025-12-02},
-	publisher = {arXiv},
-	author = {Arrieta-Ibarra, Imanol and Gujral, Paman and Tannen, Jonathan and Tygert, Mark and Xu, Cherie},
-	month = jun,
-	year = {2022},
-	note = {arXiv:2205.09680 [math]},
-	keywords = {Computer Science - Machine Learning, Mathematics - Statistics Theory, Statistics - Methodology},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\5QWAR6EQ\\Arrieta-Ibarra et al. - 2022 - Metrics of calibration for probabilistic predictions.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\VD7D3LUK\\2205.html:text/html},
-}
 
-@misc{kumar_verified_2020,
-	title = {Verified {Uncertainty} {Calibration}},
-	url = {http://arxiv.org/abs/1909.10155},
-	doi = {10.48550/arXiv.1909.10155},
-	abstract = {Applications such as weather forecasting and personalized medicine demand models that output calibrated probability estimates---those representative of the true likelihood of a prediction. Most models are not calibrated out of the box but are recalibrated by post-processing model outputs. We find in this work that popular recalibration methods like Platt scaling and temperature scaling are (i) less calibrated than reported, and (ii) current techniques cannot estimate how miscalibrated they are. An alternative method, histogram binning, has measurable calibration error but is sample inefficient---it requires \$O(B/ε{\textasciicircum}2)\$ samples, compared to \$O(1/ε{\textasciicircum}2)\$ for scaling methods, where \$B\$ is the number of distinct probabilities the model can output. To get the best of both worlds, we introduce the scaling-binning calibrator, which first fits a parametric function to reduce variance and then bins the function values to actually ensure calibration. This requires only \$O(1/ε{\textasciicircum}2 + B)\$ samples. Next, we show that we can estimate a model's calibration error more accurately using an estimator from the meteorological community---or equivalently measure its calibration error with fewer samples (\$O({\textbackslash}sqrt\{B\})\$ instead of \$O(B)\$). We validate our approach with multiclass calibration experiments on CIFAR-10 and ImageNet, where we obtain a 35\% lower calibration error than histogram binning and, unlike scaling methods, guarantees on true calibration. In these experiments, we also estimate the calibration error and ECE more accurately than the commonly used plugin estimators. We implement all these methods in a Python library: https://pypi.org/project/uncertainty-calibration},
-	urldate = {2025-12-02},
-	publisher = {arXiv},
-	author = {Kumar, Ananya and Liang, Percy and Ma, Tengyu},
-	month = jan,
-	year = {2020},
-	note = {arXiv:1909.10155 [cs]},
-	keywords = {Computer Science - Machine Learning, Statistics - Machine Learning},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\8ABYF8HV\\Kumar et al. - 2020 - Verified Uncertainty Calibration.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\VNU98GVR\\1909.html:text/html},
-}
 
-@misc{noauthor_zotero_nodate,
-	title = {Zotero {\textbar} {Your} personal research assistant},
-	url = {https://www.zotero.org/},
-	urldate = {2025-12-03},
-	file = {Zotero | Your personal research assistant:C\:\\Users\\matte\\Zotero\\storage\\AJRA4HXE\\www.zotero.org.html:text/html},
-}
 
-@misc{nixon_measuring_2020,
-	title = {Measuring {Calibration} in {Deep} {Learning}},
-	url = {http://arxiv.org/abs/1904.01685},
-	doi = {10.48550/arXiv.1904.01685},
-	abstract = {Overconfidence and underconfidence in machine learning classifiers is measured by calibration: the degree to which the probabilities predicted for each class match the accuracy of the classifier on that prediction. How one measures calibration remains a challenge: expected calibration error, the most popular metric, has numerous flaws which we outline, and there is no clear empirical understanding of how its choices affect conclusions in practice, and what recommendations there are to counteract its flaws. In this paper, we perform a comprehensive empirical study of choices in calibration measures including measuring all probabilities rather than just the maximum prediction, thresholding probability values, class conditionality, number of bins, bins that are adaptive to the datapoint density, and the norm used to compare accuracies to confidences. To analyze the sensitivity of calibration measures, we study the impact of optimizing directly for each variant with recalibration techniques. Across MNIST, Fashion MNIST, CIFAR-10/100, and ImageNet, we find that conclusions on the rank ordering of recalibration methods is drastically impacted by the choice of calibration measure. We find that conditioning on the class leads to more effective calibration evaluations, and that using the L2 norm rather than the L1 norm improves both optimization for calibration metrics and the rank correlation measuring metric consistency. Adaptive binning schemes lead to more stablity of metric rank ordering when the number of bins vary, and is also recommended. We open source a library for the use of our calibration measures.},
-	urldate = {2025-12-03},
-	publisher = {arXiv},
-	author = {Nixon, Jeremy and Dusenberry, Mike and Jerfel, Ghassen and Nguyen, Timothy and Liu, Jeremiah and Zhang, Linchuan and Tran, Dustin},
-	month = aug,
-	year = {2020},
-	note = {arXiv:1904.01685 [cs]},
-	keywords = {Computer Science - Machine Learning, Statistics - Machine Learning},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\YU7KA5H2\\Nixon et al. - 2020 - Measuring Calibration in Deep Learning.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\3D2CUYMW\\1904.html:text/html},
-}
 
-@misc{naeini_binary_2014,
-	title = {Binary {Classifier} {Calibration}: {Non}-parametric approach},
-	shorttitle = {Binary {Classifier} {Calibration}},
-	url = {http://arxiv.org/abs/1401.3390},
-	doi = {10.48550/arXiv.1401.3390},
-	abstract = {Accurate calibration of probabilistic predictive models learned is critical for many practical prediction and decision-making tasks. There are two main categories of methods for building calibrated classifiers. One approach is to develop methods for learning probabilistic models that are well-calibrated, ab initio. The other approach is to use some post-processing methods for transforming the output of a classifier to be well calibrated, as for example histogram binning, Platt scaling, and isotonic regression. One advantage of the post-processing approach is that it can be applied to any existing probabilistic classification model that was constructed using any machine-learning method. In this paper, we first introduce two measures for evaluating how well a classifier is calibrated. We prove three theorems showing that using a simple histogram binning post-processing method, it is possible to make a classifier be well calibrated while retaining its discrimination capability. Also, by casting the histogram binning method as a density-based non-parametric binary classifier, we can extend it using two simple non-parametric density estimation methods. We demonstrate the performance of the proposed calibration methods on synthetic and real datasets. Experimental results show that the proposed methods either outperform or are comparable to existing calibration methods.},
-	urldate = {2025-12-06},
-	publisher = {arXiv},
-	author = {Naeini, Mahdi Pakdaman and Cooper, Gregory F. and Hauskrecht, Milos},
-	month = jan,
-	year = {2014},
-	note = {arXiv:1401.3390 [stat]},
-	keywords = {Computer Science - Machine Learning, Statistics - Machine Learning},
-	file = {Can a calibration metric be both testable and actionable:C\:\\Users\\matte\\Zotero\\storage\\CUDFCTHE\\Can a calibration metric be both testable and actionable.pdf:application/pdf;Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\W9G9NQ73\\Naeini et al. - 2014 - Binary Classifier Calibration Non-parametric approach.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\QXLYBY43\\1401.html:text/html},
-}
 
-@misc{gupta_distribution-free_2021,
-	title = {Distribution-free calibration guarantees for histogram binning without sample splitting},
-	url = {http://arxiv.org/abs/2105.04656},
-	doi = {10.48550/arXiv.2105.04656},
-	abstract = {We prove calibration guarantees for the popular histogram binning (also called uniform-mass binning) method of Zadrozny and Elkan [2001]. Histogram binning has displayed strong practical performance, but theoretical guarantees have only been shown for sample split versions that avoid 'double dipping' the data. We demonstrate that the statistical cost of sample splitting is practically significant on a credit default dataset. We then prove calibration guarantees for the original method that double dips the data, using a certain Markov property of order statistics. Based on our results, we make practical recommendations for choosing the number of bins in histogram binning. In our illustrative simulations, we propose a new tool for assessing calibration -- validity plots -- which provide more information than an ECE estimate. Code for this work will be made publicly available at https://github.com/aigen/df-posthoc-calibration.},
-	urldate = {2025-12-06},
-	publisher = {arXiv},
-	author = {Gupta, Chirag and Ramdas, Aaditya K.},
-	month = jul,
-	year = {2021},
-	note = {arXiv:2105.04656 [stat]},
-	keywords = {Computer Science - Machine Learning, Statistics - Machine Learning, Statistics - Methodology},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\S8ZTWB8D\\Gupta and Ramdas - 2021 - Distribution-free calibration guarantees for histogram binning without sample splitting.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\4TXR3HHT\\2105.html:text/html},
-}
 
-@article{zadrozny_obtaining_nodate,
-	title = {Obtaining calibrated probability estimates from decision trees and naive {Bayesian} classiﬁers},
-	abstract = {Accurate, well-calibrated estimates of class membership probabilities are needed in many supervised learning applications, in particular when a cost-sensitive decision must be made about examples with example-dependent costs. This paper presents simple but successful methods for obtaining calibrated probability estimates from decision tree and naive Bayesian classiﬁers. Using the large and challenging KDD’98 contest dataset as a testbed, we report the results of a detailed experimental comparison of ten methods, according to four evaluation measures. We conclude that binning succeeds in signiﬁcantly improving naive Bayesian probability estimates, while for improving decision tree probability estimates, we recommend smoothing by -estimation and a new variant of pruning that we call curtailment.},
-	language = {en},
-	author = {Zadrozny, Bianca and Elkan, Charles},
-	keywords = {binning},
-	file = {PDF:C\:\\Users\\matte\\Zotero\\storage\\DZSMIK4L\\Zadrozny and Elkan - Obtaining calibrated probability estimates from decision trees and naive Bayesian classiﬁers.pdf:application/pdf},
-}
 
-@misc{rossellini_can_2025,
-	title = {Can a calibration metric be both testable and actionable?},
-	url = {http://arxiv.org/abs/2502.19851},
-	doi = {10.48550/arXiv.2502.19851},
-	abstract = {Forecast probabilities often serve as critical inputs for binary decision making. In such settings, calibration—ensuring forecasted probabilities match empirical frequencies—is essential. Although the common notion of Expected Calibration Error (ECE) provides actionable insights for decision making, it is not testable: it cannot be empirically estimated in many practical cases. Conversely, the recently proposed Distance from Calibration (dCE) is testable but is not actionable since it lacks decision-theoretic guarantees needed for high-stakes applications. We introduce Cutoff Calibration Error, a calibration measure that bridges this gap by assessing calibration over intervals of forecasted probabilities. We show that Cutoff Calibration Error is both testable and actionable and examine its implications for popular post-hoc calibration methods, such as isotonic regression and Platt scaling.},
-	language = {en},
-	urldate = {2025-12-11},
-	publisher = {arXiv},
-	author = {Rossellini, Raphael and Soloff, Jake A. and Barber, Rina Foygel and Ren, Zhimei and Willett, Rebecca},
-	month = aug,
-	year = {2025},
-	note = {arXiv:2502.19851 [stat]},
-	keywords = {Statistics - Machine Learning, Statistics - Methodology},
-	file = {PDF:C\:\\Users\\matte\\Zotero\\storage\\ZE859R58\\Rossellini et al. - 2025 - Can a calibration metric be both testable and actionable.pdf:application/pdf},
-}
 
-@article{fisch_calibrated_nodate,
-	title = {Calibrated {Selective} {Classification}},
-	language = {en},
-	author = {Fisch, Adam and Jaakkola, Tommi and Barzilay, Regina},
-	file = {PDF:C\:\\Users\\matte\\Zotero\\storage\\BKHW422T\\Fisch et al. - Calibrated Selective Classification.pdf:application/pdf},
-}
 
-@misc{bihani_calibration_2023,
-	title = {Calibration {Error} {Estimation} {Using} {Fuzzy} {Binning}},
-	url = {http://arxiv.org/abs/2305.00543},
-	doi = {10.48550/arXiv.2305.00543},
-	abstract = {Neural network-based decisions tend to be overconfident, where their raw outcome probabilities do not align with the true decision probabilities. Calibration of neural networks is an essential step towards more reliable deep learning frameworks. Prior metrics of calibration error primarily utilize crisp bin membership-based measures. This exacerbates skew in model probabilities and portrays an incomplete picture of calibration error. In this work, we propose a Fuzzy Calibration Error metric (FCE) that utilizes a fuzzy binning approach to calculate calibration error. This approach alleviates the impact of probability skew and provides a tighter estimate while measuring calibration error. We compare our metric with ECE across different data populations and class memberships. Our results show that FCE offers better calibration error estimation, especially in multi-class settings, alleviating the effects of skew in model confidence scores on calibration error estimation. We make our code and supplementary materials available at: https://github.com/bihani-g/fce},
-	urldate = {2026-01-15},
-	publisher = {arXiv},
-	author = {Bihani, Geetanjali and Rayz, Julia Taylor},
-	month = may,
-	year = {2023},
-	note = {arXiv:2305.00543 [cs]},
-	keywords = {Computer Science - Machine Learning, Computer Science - Artificial Intelligence, Computer Science - Neural and Evolutionary Computing},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\HDZUYFHI\\Bihani and Rayz - 2023 - Calibration Error Estimation Using Fuzzy Binning.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\UHXTCJCA\\2305.html:text/html},
-}
 
-@misc{berta_classifier_2023,
-	title = {Classifier {Calibration} with {ROC}-{Regularized} {Isotonic} {Regression}},
-	url = {http://arxiv.org/abs/2311.12436},
-	doi = {10.48550/arXiv.2311.12436},
-	abstract = {Calibration of machine learning classifiers is necessary to obtain reliable and interpretable predictions, bridging the gap between model confidence and actual probabilities. One prominent technique, isotonic regression (IR), aims at calibrating binary classifiers by minimizing the cross entropy on a calibration set via monotone transformations. IR acts as an adaptive binning procedure, which allows achieving a calibration error of zero, but leaves open the issue of the effect on performance. In this paper, we first prove that IR preserves the convex hull of the ROC curve -- an essential performance metric for binary classifiers. This ensures that a classifier is calibrated while controlling for overfitting of the calibration set. We then present a novel generalization of isotonic regression to accommodate classifiers with K classes. Our method constructs a multidimensional adaptive binning scheme on the probability simplex, again achieving a multi-class calibration error equal to zero. We regularize this algorithm by imposing a form of monotony that preserves the K-dimensional ROC surface of the classifier. We show empirically that this general monotony criterion is effective in striking a balance between reducing cross entropy loss and avoiding overfitting of the calibration set.},
-	urldate = {2026-01-17},
-	publisher = {arXiv},
-	author = {Berta, Eugene and Bach, Francis and Jordan, Michael},
-	month = nov,
-	year = {2023},
-	note = {arXiv:2311.12436 [cs]},
-	keywords = {Computer Science - Machine Learning},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\MENPME7V\\Berta et al. - 2023 - Classifier Calibration with ROC-Regularized Isotonic Regression.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\T6P2A4YG\\2311.html:text/html},
-}
 
-@misc{bihani_calibration_2023-1,
-	title = {Calibration {Error} {Estimation} {Using} {Fuzzy} {Binning}},
-	url = {http://arxiv.org/abs/2305.00543},
-	doi = {10.48550/arXiv.2305.00543},
-	abstract = {Neural network-based decisions tend to be overconfident, where their raw outcome probabilities do not align with the true decision probabilities. Calibration of neural networks is an essential step towards more reliable deep learning frameworks. Prior metrics of calibration error primarily utilize crisp bin membership-based measures. This exacerbates skew in model probabilities and portrays an incomplete picture of calibration error. In this work, we propose a Fuzzy Calibration Error metric (FCE) that utilizes a fuzzy binning approach to calculate calibration error. This approach alleviates the impact of probability skew and provides a tighter estimate while measuring calibration error. We compare our metric with ECE across different data populations and class memberships. Our results show that FCE offers better calibration error estimation, especially in multi-class settings, alleviating the effects of skew in model confidence scores on calibration error estimation. We make our code and supplementary materials available at: https://github.com/bihani-g/fce},
-	urldate = {2026-01-19},
-	publisher = {arXiv},
-	author = {Bihani, Geetanjali and Rayz, Julia Taylor},
-	month = may,
-	year = {2023},
-	note = {arXiv:2305.00543 [cs]},
-	keywords = {Computer Science - Machine Learning, Computer Science - Artificial Intelligence, Computer Science - Neural and Evolutionary Computing},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\8MNPEQR9\\Bihani and Rayz - 2023 - Calibration Error Estimation Using Fuzzy Binning.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\U8BG99DX\\2305.html:text/html},
-}
 
-@inproceedings{gopalan_low-degree_2022,
-	title = {Low-{Degree} {Multicalibration}},
-	issn = {2640-3498},
-	url = {https://proceedings.mlr.press/v178/gopalan22a.html},
-	abstract = {Introduced as a notion of algorithmic fairness, multicalibration has proved to be a powerful and versatile concept with implications far beyond its original intent.  This stringent notion—that predictions be well-calibrated across a rich class of intersecting subpopulations—provides its strong guarantees at a cost: the computational and sample complexity of learning multicalibrated predictors are high, and grow exponentially with the number of class labels.  In contrast, the relaxed notion of multiaccuracy can be achieved more efficiently, yet many of the most desirable properties of multicalibration cannot be guaranteed assuming multiaccuracy alone.  This tension raises a key question:  {\textbackslash}emph\{Can we learn predictors with multicalibration-style guarantees at a cost commensurate with multiaccuracy?\} In this work, we define and initiate the study of {\textbackslash}emph\{Low-Degree Multicalibration\}.  Low-Degree Multicalibration defines a hierarchy of increasingly-powerful multi-group fairness notions that spans multiaccuracy and the original formulation of multicalibration at the extremes.  Our main technical contribution demonstrates that key properties of multicalibration, related to fairness and accuracy, actually manifest as low-degree properties.  Importantly, we show that low-degree multicalibration can be significantly more efficient than full multicalibration.  In the multi-class setting, the sample complexity to achieve low-degree multicalibration improves exponentially (in the number of classes) over full multicalibration.  Our work presents compelling evidence that low-degree multicalibration represents a sweet spot, pairing computational and sample efficiency with strong fairness and accuracy guarantees.},
-	language = {en},
-	urldate = {2026-01-19},
-	booktitle = {Proceedings of {Thirty} {Fifth} {Conference} on {Learning} {Theory}},
-	publisher = {PMLR},
-	author = {Gopalan, Parikshit and Kim, Michael P. and Singhal, Mihir A. and Zhao, Shengjia},
-	month = jun,
-	year = {2022},
-	pages = {3193--3234},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\UWMDEGF7\\Gopalan et al. - 2022 - Low-Degree Multicalibration.pdf:application/pdf},
-}
 
-@misc{zhao_individual_2020,
-	title = {Individual {Calibration} with {Randomized} {Forecasting}},
-	url = {http://arxiv.org/abs/2006.10288},
-	doi = {10.48550/arXiv.2006.10288},
-	abstract = {Machine learning applications often require calibrated predictions, e.g. a 90{\textbackslash}\% credible interval should contain the true outcome 90{\textbackslash}\% of the times. However, typical definitions of calibration only require this to hold on average, and offer no guarantees on predictions made on individual samples. Thus, predictions can be systematically over or under confident on certain subgroups, leading to issues of fairness and potential vulnerabilities. We show that calibration for individual samples is possible in the regression setup if the predictions are randomized, i.e. outputting randomized credible intervals. Randomization removes systematic bias by trading off bias with variance. We design a training objective to enforce individual calibration and use it to train randomized regression functions. The resulting models are more calibrated for arbitrarily chosen subgroups of the data, and can achieve higher utility in decision making against adversaries that exploit miscalibrated predictions.},
-	urldate = {2026-01-19},
-	publisher = {arXiv},
-	author = {Zhao, Shengjia and Ma, Tengyu and Ermon, Stefano},
-	month = sep,
-	year = {2020},
-	note = {arXiv:2006.10288 [stat]},
-	keywords = {Computer Science - Machine Learning, Statistics - Machine Learning},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\GSHGQAIB\\Zhao et al. - 2020 - Individual Calibration with Randomized Forecasting.pdf:application/pdf;Snapshot:C\:\\Users\\matte\\Zotero\\storage\\5M72ILNN\\2006.html:text/html},
-}
 
-@article{gupta_post-hoc_nodate,
-	title = {Post-hoc calibration without distributional assumptions},
-	language = {en},
-	author = {Gupta, Chirag},
-	file = {PDF:C\:\\Users\\matte\\Zotero\\storage\\E3XGE6AG\\Gupta - Post-hoc calibration without distributional assumptions.pdf:application/pdf},
-}
 
-@article{brier_verification_1950,
-	chapter = {Monthly Weather Review},
-	title = {{VERIFICATION} {OF} {FORECASTS} {EXPRESSED} {IN} {TERMS} {OF} {PROBABILITY}},
-	issn = {1520-0493},
-	url = {https://journals.ametsoc.org/view/journals/mwre/78/1/1520-0493_1950_078_0001_vofeit_2_0_co_2.xml},
-	abstract = {No Abstract Available.},
-	language = {en},
-	urldate = {2026-01-20},
-	author = {Brier, Glenn W.},
-	month = jan,
-	year = {1950},
-	file = {Full Text PDF:C\:\\Users\\matte\\Zotero\\storage\\JSXNFHW8\\Brier - 1950 - VERIFICATION OF FORECASTS EXPRESSED IN TERMS OF PROBABILITY.pdf:application/pdf},
-}
 
 @article{gneiting_probabilistic_nodate,
 	title = {Probabilistic forecasts, calibration and sharpness},

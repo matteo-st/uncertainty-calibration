@@ -61,7 +61,7 @@
 
 % Comments
 \newboolean{showcomments}
-\setboolean{showcomments}{true}
+\setboolean{showcomments}{true}     
 \ifthenelse{\boolean{showcomments}}
 { \newcommand{\mynote}[3]{
 		\fbox{\bfseries\sffamily\scriptsize#1}
@@ -106,9 +106,9 @@
 \printAffiliationsAndNotice{}  % required even if empty
 
 \begin{abstract}
-Reliable deployment of machine-learning classifiers requires principled guarantees on when predictions are likely to be wrong. Calibrating a pre-trained classifier can yield uncertainty estimates that are interpretable as probabilities and come with calibration guarantees under appropriate conditions. On the other hand, work on misclassification detection has largely emphasized \emph{discriminative} uncertainty scores for error detection, which are typically not interpretable as failure probabilities. We study how to align these goals and develop uncertainty scores that are simultaneously \emph{discriminative} for error detection and \emph{calibrated} as failure risk.
+Reliable deployment of machine-learning classifiers requires principled guarantees on when predictions are likely to be wrong. Calibrating a pre-trained classifier yields uncertainty estimates that are interpretable as probabilities and come with calibration guarantees under appropriate conditions. On the other hand, work on misclassification detection has largely emphasized \emph{discriminative} uncertainty estimate for error detection, which are typically not interpretable as failure probabilities. We study how to align these goals and develop uncertainty scores that are simultaneously \emph{discriminative} for error detection and \emph{calibrated} as failure risk.
 
-First, we establish a new distribution-free impossibility result for \textit{individual calibration}, showing that meaningful pointwise calibration guarantees cannot be achieved without additional assumptions. We further clarify why common regularity-based relaxations are not suitable for uncertainty quantification. We then focus on uncertainty-score calibration and adopt an existing calibration procedure with finite-sample guarantees. We provide a minimax analysis of the resulting calibration rates and prove their optimality. Finally, experiments on standard natural-language benchmarks with three Transformer models, four datasets, and five uncertainty scores show that it is possible to obtain uncertainty scores that remain strongly discriminative while becoming interpretable as calibrated failure risk with verified finite-sample guarantees.
+First, we establish a new distribution-free impossibility result for \textit{individual calibration}, showing that meaningful pointwise calibration guarantees cannot be achieved without additional assumptions. We further clarify why common regularity-based relaxations are not suitable for uncertainty quantification. We then focus on uncertainty-score calibration and adopt an existing calibration procedure with finite-sample guarantees. We provide a minimax analysis of the resulting calibration rates and prove their optimality. Finally, experiments on standard natural-language benchmarks show that it is possible to obtain uncertainty scores that remain strongly discriminative while becoming interpretable as calibrated failure risk with verified finite-sample guarantees.
 \end{abstract}
 
 \section{Introduction}
@@ -538,6 +538,8 @@ where $\epsilon^*_{n,B,\alpha}$ is defined in \eqref{eq:my_minimax_risk_def} and
 \section{Experiments}
 \label{sec:experiments}
 
+\input{tables/nlp_main_results}
+
 We evaluate the uniform-mass calibration procedure on text classification benchmarks.
 Our goal is to verify empirically that, for a variety of uncertainty scores and models, the calibrated scores (i)~remain discriminative for error detection and (ii)~satisfy the calibration guarantee of Theorem~\ref{thm:unif-mass_calibration}.
 We also compare uniform-mass calibration against standard parametric and nonparametric baselines.
@@ -547,20 +549,23 @@ We also compare uniform-mass calibration against standard parametric and nonpara
 \textbf{Datasets.}
 We consider four text classification datasets spanning different tasks and scales: MRPC~\citep{dolan2005automatically} (paraphrase detection), SST-2~\citep{socher-etal-2013-recursive} (sentiment analysis), CoLA~\citep{warstadt2019neural} (linguistic acceptability), and AG News~\citep{zhang2015character} (topic classification).
 The first three are binary ($K=2$); AG News has $K=4$ classes.
-Dataset statistics are reported in Table~\ref{tab:dataset_stats} in Appendix~\ref{app:expe}.
-For each dataset, we reserve a calibration set of $n=1{,}000$ samples from the training data, held out from both training and hyperparameter selection.
+To limit computational cost, we subsample SST-2 and AG News to 10\% of their original training sets (from 67{,}349 to 6{,}735 and from 120{,}000 to 12{,}000 samples, respectively); MRPC and CoLA are used in full.
+For each dataset, we hold out a calibration set of $n=1{,}000$ samples from the training data, reserved exclusively for fitting the calibrator and never used during training or hyperparameter selection.
+For MRPC, SST-2, and CoLA, the test set is the GLUE validation split~\citep{wang-etal-2018-glue} (since GLUE test labels are not publicly available); for AG News, we use its standard test split.
+Full dataset statistics are reported in Table~\ref{tab:dataset_stats} (Appendix~\ref{app:expe}).
 
 \textbf{Models.}
 We use three Transformer encoders: ELECTRA~\citep{clark2020electrapretrainingtextencoders} (110M parameters), BERT~\citep{devlin2019bert} (110M), and DeBERTa-v3~\citep{he2021debertadecodingenhancedbertdisentangled} (138M).
 For each model and dataset, we add a classification head and fine-tune all weights.
-Hyperparameters are selected via Bayesian optimization (Optuna TPE) on a held-out validation fold of the training set; the calibration set is never used for selection.
+Hyperparameters (learning rate, batch size, number of epochs, weight decay) are selected via Bayesian optimization (Optuna TPE, 20 trials) on an internal 80/20 train/validation split of the training data; the calibration set is never used for selection.
+After selection, each model is re-trained on the full training set (excluding the calibration set) with the chosen hyperparameters.
+The selected hyperparameters and search ranges are reported in Appendix~\ref{app:expe}.
 
 \textbf{Uncertainty scores.}
-We evaluate three representative uncertainty scores from different families:
-the \emph{softmax probability} (SP) score $u_{\mathrm{SP}}(\mathbf{x}) = 1 - \max_k g_k(\mathbf{x})$~\citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution}, which is bounded in $[0,1]$;
-the \emph{energy} score $u_{\mathrm{E}}(\mathbf{x}) = -\log \sum_k \exp(l_k(\mathbf{x}))$~\citep{liu2021energybasedoutofdistributiondetection}, computed from pre-softmax logits and unbounded;
-and the \emph{Mahalanobis distance} (MD)~\citep{vazhentsev_uncertainty_2022}, a density-based score computed from hidden representations, also unbounded.
-We additionally evaluate two further softmax-based scores (predictive entropy and Doctor~\citep{granese2021doctorsimplemethoddetecting}) in Appendix~\ref{app:expe}; for binary tasks ($K=2$), these are monotone transforms of SP and yield identical ROCAUC.
+We focus on two representative uncertainty scores from complementary families:
+the \emph{softmax probability} (SP) score $u_{\mathrm{SP}}(\mathbf{x}) = 1 - \max_k g_k(\mathbf{x})$~\citep{hendrycks2018baselinedetectingmisclassifiedoutofdistribution}, the most widely used baseline, which is bounded in $[0,1]$ and directly interpretable as an error probability;
+and the \emph{Mahalanobis distance} (MD)~\citep{vazhentsev_uncertainty_2022}, a density-based score computed from hidden representations, which is unbounded and captures information from the feature space rather than the output layer.
+All scores are formally defined in Appendix~\ref{app:expe}, where we additionally evaluate three further scores (predictive entropy, Doctor~\citep{granese2021doctorsimplemethoddetecting}, and energy~\citep{liu2021energybasedoutofdistributiondetection}); none outperform SP in discrimination, and for binary tasks ($K=2$) the softmax-based scores are monotone transforms of SP yielding identical ROCAUC.
 
 \textbf{Protocol.}
 All experiments use 3 random seeds (42, 123, 456); results are reported as mean~$\pm$~std.
@@ -586,9 +591,11 @@ After uniform-mass calibration, the score takes finitely many discrete values, s
 
 \subsection{Results}
 
+
+
 \paragraph{Calibrated scores preserve discrimination.}
-Table~\ref{tab:main_results} reports ROCAUC before and after uniform-mass (UM) calibration for each (dataset, model) pair and three scores.
-The average ROCAUC change after calibration is $-0.017$ for SP, $-0.007$ for Energy, and $-0.021$ for MD.
+Table~\ref{tab:main_results} reports ROCAUC before and after uniform-mass (UM) calibration for each (dataset, model) pair.
+The average ROCAUC change after calibration is $-0.017$ for SP and $-0.021$ for MD.
 These small drops are intrinsic to any binning-based method: mapping multiple score values to a single calibrated value creates ties that can reduce ranking quality.
 Despite this, the calibrated scores remain strongly discriminative.
 
@@ -597,29 +604,36 @@ MD achieves the highest raw ROCAUC in 9 out of 12 (dataset, model) pairs.
 This is consistent with previous findings that density-based scores capture information beyond softmax outputs~\citep{vazhentsev_uncertainty_2022}.
 After UM calibration, MD retains its advantage in most settings.
 
-\paragraph{Low calibration error.}
-ECE after UM calibration is consistently low: $0.038$ on average for SP, $0.036$ for Energy, and $0.037$ for MD (Table~\ref{tab:main_results}).
-This represents a substantial improvement over raw SP, whose ECE averages $0.097$ before calibration.
-Raw Energy and MD scores are unbounded and thus not directly interpretable as probabilities; UM calibration maps them to the $[0,1]$ interval with empirical error rates.
+\paragraph{Low calibration error after UM calibration.}
+MCE after UM calibration is consistently low: $0.140$ on average for SP and $0.155$ for MD (Table~\ref{tab:main_results}).
+For SP---the only score directly interpretable as an error probability before calibration---raw MCE averages $0.347$, showing that UM calibration substantially reduces miscalibration.
+Raw MD scores are unbounded and not directly interpretable as probabilities; UM calibration maps them to the $[0,1]$ interval with empirical error rates.
 
-\paragraph{Finite-sample guarantees hold empirically.}
+\paragraph{Comparison with parametric and nonparametric baselines.}
+Figure~\ref{fig:ncal_ablation} shows how MCE and ROCAUC vary with the calibration set size $n_{\mathrm{cal}}$ for three methods: uniform-mass (UM), Platt scaling~\citep{plat_scaling} fitted as $\sigma(a z + b)$ on standardized scores, and isotonic regression~\citep{isotonic}.
+We use the Mahalanobis distance score (the strongest discriminator) with DeBERTa-v3-base (the best-performing model) and vary $n_{\mathrm{cal}} \in \{50, 100, 200, 500, 1000, 2000, 5000, 10000\}$ by sampling from unused training data of SST-2 and AG News (which were subsampled to 10\%), with 20 random draws per value.
+Results are shown separately for each dataset, aggregating over 3 seeds $\times$ 20 draws = 60 points per $n_{\mathrm{cal}}$ value.
+The full per-model breakdown is in Appendix~\ref{app:ncal_ablation}.
 
-Table~\ref{tab:calibration_comparison} summarizes the comparison of calibration methods aggregated over all 36 experiments (4 datasets $\times$ 3 models $\times$ 3 seeds).
-With the theoretical bound $\epsilon = 0.255$, Theorem~\ref{thm:unif-mass_calibration} guarantees $\mathrm{MCE} \le \epsilon$ with probability at least $0.95$.
-Empirically, UM satisfies this bound in 94\% of experiments for SP, 100\% for Energy, and 86\% for MD.
-In contrast, Platt scaling~\citep{plat_scaling}---fitted as $\sigma(a \cdot z + b)$ on standardized scores---satisfies the bound in only 50\%--86\% of experiments despite preserving ROCAUC exactly (being a strictly monotone transform).
-Isotonic regression~\citep{isotonic} achieves the lowest ECE overall but, lacking theoretical guarantees, satisfies $\mathrm{MCE} \le \epsilon$ in 86\%--94\% of cases.
+UM's empirical MCE remains below the theoretical bound~$\varepsilon(n_{\mathrm{cal}})$ for $n_{\mathrm{cal}} \leq 5000$ on both datasets, confirming the finite-sample guarantee of Theorem~\ref{thm:unif-mass_calibration}.
+At $n_{\mathrm{cal}} = 10{,}000$ the mean empirical MCE slightly exceeds~$\varepsilon$; this is expected since~$\varepsilon$ bounds the population MCE, while the empirical estimate on finite test sets becomes noisier as the number of bins~$B$ grows.
+Platt scaling yields the highest MCE, reaching $0.28$ at $n_{\mathrm{cal}} = 10{,}000$, reflecting the rigidity of its parametric sigmoid form.
+Isotonic regression achieves the lowest MCE across most calibration set sizes but lacks theoretical guarantees.
+All three methods show degraded ROCAUC at small~$n_{\mathrm{cal}}$ due to estimation noise, but converge toward the raw score's discrimination for $n_{\mathrm{cal}} \geq 1000$.
 
-\input{tables/nlp_main_results}
-
-\input{tables/calibration_comparison}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/ncal_ablation.pdf}
+\caption{Effect of calibration set size $n_{\mathrm{cal}}$ on maximum calibration error (MCE, left) and discrimination (ROCAUC, right) for the Mahalanobis distance score with DeBERTa-v3-base, shown separately for SST-2 (top) and AG News (bottom). Each point aggregates 60 experiments (3 seeds $\times$ 20 draws). Shaded bands show $\pm 1$ standard deviation. The dashed black curve is the theoretical bound $\varepsilon(n_{\mathrm{cal}})$ from Theorem~\ref{thm:unif-mass_calibration}. UM stays below the bound for $n_{\mathrm{cal}} \leq 5000$; Platt scaling has consistently higher MCE due to its rigid parametric form. Full per-model results in Figure~\ref{fig:ncal_ablation_full}.}
+\label{fig:ncal_ablation}
+\end{figure}
 
 
 \section{Summary and Future Work}
 
 We studied the construction of uncertainty scores that are simultaneously discriminative for misclassification detection and calibrated as failure-risk estimates with distribution-free guarantees.
 On the theoretical side, we established an impossibility result for individual calibration (Theorem~\ref{thm:indiv_calib_imp}), motivated score calibration as the appropriate relaxation, and proved minimax optimality of the uniform-mass calibration rate (Theorem~\ref{thm:minmax}).
-On the empirical side, experiments on four text classification benchmarks with three models and five uncertainty scores confirm that uniform-mass calibration provides low calibration error (ECE $\approx 0.02$--$0.07$) while preserving discrimination, with the finite-sample MCE guarantee of Theorem~\ref{thm:unif-mass_calibration} holding in 86\%--100\% of experiments.
+On the empirical side, experiments on four text classification benchmarks with three models and five uncertainty scores confirm that uniform-mass calibration provides low maximum calibration error (MCE $\approx 0.06$--$0.29$) while preserving discrimination (average ROCAUC drop $<0.02$).
 
 Future work includes tightening the finite-sample bounds via sharper one-sided binomial inequalities (e.g., Clopper--Pearson, empirical Bernstein), and adapting the number of samples per bin to the difficulty of the estimation problem. Extensions to multi-class calibration and to settings with distribution shift are also promising directions.
 
@@ -1225,6 +1239,9 @@ where we used \eqref{eq:quantile_identity}. This concludes the proof.
 \subsection{Dataset Statistics}
 \input{tables/dataset_stats}
 
+\subsection{Hyperparameter Selection}
+\input{tables/hyperparameters}
+
 \subsection{Uncertainty Scores}
 \label{app:uncertainty_scores}
 
@@ -1289,5 +1306,35 @@ Table~\ref{tab:full_results} reports ROCAUC, ECE, and MCE before and after unifo
 
 \input{tables/full_results}
 
+\subsection{Calibration Sample Size Ablation --- Full Results}
+\label{app:ncal_ablation}
+
+Figures~\ref{fig:ncal_ablation_full} and~\ref{fig:ncal_ablation_sp} extend Figure~\ref{fig:ncal_ablation} to all three encoder models (ELECTRA, BERT, DeBERTa-v3-base), showing MCE and ROCAUC as a function of $n_{\mathrm{cal}}$ for each (model, dataset) combination.
+Figure~\ref{fig:ncal_ablation_full} uses the Mahalanobis distance score; Figure~\ref{fig:ncal_ablation_sp} uses the softmax probability score.
+
+The trends observed for DeBERTa in the main text hold across models: UM stays below the theoretical bound for moderate $n_{\mathrm{cal}}$, Platt scaling has rigidly high MCE, and all methods converge in ROCAUC for $n_{\mathrm{cal}} \geq 1000$.
+Comparing the two scores provides insight into Platt scaling's failure mode: because Platt scaling fits a sigmoid $\sigma(az+b)$, it is well-suited to SP scores (which are bounded in $[0,1]$ and roughly sigmoidal), but poorly suited to MD scores (which are unbounded and have a non-sigmoidal calibration map).
+Indeed, Platt scaling's MCE is substantially lower for SP than for MD across all models and datasets, confirming that its high MCE on MD is due to model misspecification rather than insufficient calibration data.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{figures/ncal_ablation_full.pdf}
+\caption{Calibration sample size ablation --- Mahalanobis distance score. Each row is one (model, dataset) pair; columns show MCE (left) and ROCAUC (right). Each point aggregates 60 experiments (3 seeds $\times$ 20 draws). Shaded bands: $\pm 1$ std. Dashed black: theoretical $\varepsilon(n_{\mathrm{cal}})$.}
+\label{fig:ncal_ablation_full}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{figures/ncal_ablation_sp.pdf}
+\caption{Calibration sample size ablation --- softmax probability score. Same layout as Figure~\ref{fig:ncal_ablation_full}. Platt scaling's MCE is substantially lower than for the Mahalanobis score (Figure~\ref{fig:ncal_ablation_full}), confirming that its poor calibration on MD is due to sigmoid model misspecification.}
+\label{fig:ncal_ablation_sp}
+\end{figure}
+
+\subsection{Hardware and Computational Resources}
+
+All fine-tuning experiments were conducted on a server equipped with 2$\times$ NVIDIA A100 80\,GB GPUs.
+Each of the 36 fine-tuning runs (12 model--dataset pairs $\times$ 3 seeds) takes between 5 and 30 minutes depending on dataset size and number of epochs.
+Hyperparameter search (20 Optuna trials per pair, 12 pairs) was run in parallel across both GPUs.
+Post-hoc calibration and metric computation are CPU-only and complete in seconds per experiment.
 
 \end{document}
