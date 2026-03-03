@@ -165,6 +165,11 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                         print(f"  SKIP n_cal={n_cal} > pool_size={pool_size}")
                         continue
 
+                    # Use the same number of bins for ALL methods at this n_cal.
+                    # Scott's rule on n_cal ensures consistent resolution and
+                    # matches the UM calibration's own bin count.
+                    B_eval = int(2 * (n_cal ** (1 / 3)))
+
                     for draw in range(n_draws):
                         # Sample n_cal from pool
                         rng = np.random.RandomState(seed * 1000 + draw)
@@ -205,7 +210,7 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                             )
                             platt_rocauc = compute_rocauc(test_platt, test_errors)
                             platt_mce = compute_mce_uniform_mass(
-                                test_platt, test_errors
+                                test_platt, test_errors, n_bins=B_eval
                             )
                         except Exception:
                             platt_rocauc = float("nan")
@@ -230,7 +235,7 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                             test_iso = iso.predict(test_md)
                             iso_rocauc = compute_rocauc(test_iso, test_errors)
                             iso_mce = compute_mce_uniform_mass(
-                                test_iso, test_errors
+                                test_iso, test_errors, n_bins=B_eval
                             )
                         except Exception:
                             iso_rocauc = float("nan")
