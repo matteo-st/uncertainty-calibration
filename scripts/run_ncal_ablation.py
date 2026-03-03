@@ -165,11 +165,6 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                         print(f"  SKIP n_cal={n_cal} > pool_size={pool_size}")
                         continue
 
-                    # Use the same number of bins for ALL methods at this n_cal.
-                    # Scott's rule on n_cal ensures consistent resolution and
-                    # matches the UM calibration's own bin count.
-                    B_eval = int(2 * (n_cal ** (1 / 3)))
-
                     for draw in range(n_draws):
                         # Sample n_cal from pool
                         rng = np.random.RandomState(seed * 1000 + draw)
@@ -181,7 +176,9 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                         if len(np.unique(cal_errors_sample)) < 2:
                             continue
 
-                        # --- Uniform Mass ---
+                        # --- Uniform Mass (discrete output) ---
+                        # MCE via level sets: group by the B distinct
+                        # calibrated values produced by UM.
                         um = UniformMassCalibration()
                         um.fit(cal_scores_sample, cal_errors_sample)
                         test_um = um.calibrate(test_md)
@@ -200,7 +197,9 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                             "raw_rocauc": float(raw_rocauc),
                         })
 
-                        # --- Platt Scaling ---
+                        # --- Platt Scaling (continuous output) ---
+                        # MCE via uniform-mass binning on the test set;
+                        # B = int(2 * n_test^(1/3)) by default.
                         try:
                             a, b, mu, sigma = fit_platt_general(
                                 cal_scores_sample, cal_errors_sample
@@ -210,7 +209,7 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                             )
                             platt_rocauc = compute_rocauc(test_platt, test_errors)
                             platt_mce = compute_mce_uniform_mass(
-                                test_platt, test_errors, n_bins=B_eval
+                                test_platt, test_errors
                             )
                         except Exception:
                             platt_rocauc = float("nan")
@@ -228,14 +227,16 @@ def run_ablation(cache_dir, n_cal_values, n_draws, output_dir):
                             "raw_rocauc": float(raw_rocauc),
                         })
 
-                        # --- Isotonic Regression ---
+                        # --- Isotonic Regression (discrete output) ---
+                        # MCE via level sets: isotonic regression produces a
+                        # step function with a finite number of distinct values.
                         try:
                             iso = IsotonicRegression(out_of_bounds="clip")
                             iso.fit(cal_scores_sample, cal_errors_sample)
                             test_iso = iso.predict(test_md)
                             iso_rocauc = compute_rocauc(test_iso, test_errors)
-                            iso_mce = compute_mce_uniform_mass(
-                                test_iso, test_errors, n_bins=B_eval
+                            iso_mce = compute_mce_discrete(
+                                test_iso, test_errors
                             )
                         except Exception:
                             iso_rocauc = float("nan")
