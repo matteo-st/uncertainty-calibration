@@ -23,7 +23,7 @@ Post-hoc uniform-mass (UM) calibration preserves discrimination (ROCAUC) while p
 
 | Dataset | K | Full train | Subsample | Available | n\_cal | n\_train | n\_test | Cal % | Source |
 |---------|---|-----------|-----------|-----------|--------|---------|--------|-------|--------|
-| **SST-2** | 2 | 67,349 | 10% | 6,735 | 1,000 | 5,735 | 872 | 15% | GLUE val |
+| **SST-2** | 2 | 67,349 | 10% | 6,735 | 1,000 | 5,735 | 7,600 | 15% | Training pool |
 | **MRPC** | 2 | 3,668 | No | 3,668 | 1,000 | 2,668 | 408 | 27% | GLUE val |
 | **CoLA** | 2 | 8,551 | No | 8,551 | 1,000 | 7,551 | 1,043 | 12% | GLUE val |
 | **AG News** | 4 | 120,000 | 10% | 12,000 | 1,000 | 11,000 | 7,600 | 8% | Own test |

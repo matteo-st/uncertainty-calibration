@@ -6,13 +6,14 @@
 \textbf{Dataset} & \textbf{Task} & $K$ & \textbf{Original} & \textbf{Subsample} & \textbf{Train} & \textbf{Cal} & \textbf{Test} \\
 \midrule
 MRPC    & Paraphrase detection & 2  & 3{,}668   & 100\%  & 2{,}668   & 1{,}000 & 408     \\
-SST-2   & Sentiment analysis   & 2  & 67{,}349  & 10\%   & 5{,}735   & 1{,}000 & 872     \\
+SST-2   & Sentiment analysis   & 2  & 67{,}349  & 10\%   & 5{,}735   & 1{,}000 & 7{,}600 \\
 CoLA    & Acceptability         & 2  & 8{,}551   & 100\%  & 7{,}551   & 1{,}000 & 1{,}043 \\
 AG News & Topic classification & 4  & 120{,}000 & 10\%   & 11{,}000  & 1{,}000 & 7{,}600 \\
 \bottomrule
 \end{tabular}
 \caption{Dataset statistics. ``Original'' is the full training set size; ``Subsample'' is the fraction retained to limit computational cost.
 From the retained data, $n=1{,}000$ samples are held out as the calibration set (never used for training or hyperparameter selection); the rest is used for training.
-For MRPC, SST-2, and CoLA, the test set is the GLUE validation split (test labels are not public); for AG News, we use the standard test split.}
+For MRPC and CoLA, the test set is the GLUE validation split (test labels are not public).
+For SST-2, the test set is carved from the unused training pool (after train and calibration splits) to obtain a larger evaluation set; for AG News, we use the standard test split.}
 \label{tab:dataset_stats}
 \end{table}

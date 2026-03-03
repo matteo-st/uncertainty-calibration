@@ -551,7 +551,8 @@ We consider four text classification datasets spanning different tasks and scale
 The first three are binary ($K=2$); AG News has $K=4$ classes.
 To limit computational cost, we subsample SST-2 and AG News to 10\% of their original training sets (from 67{,}349 to 6{,}735 and from 120{,}000 to 12{,}000 samples, respectively); MRPC and CoLA are used in full.
 For each dataset, we hold out a calibration set of $n=1{,}000$ samples from the training data, reserved exclusively for fitting the calibrator and never used during training or hyperparameter selection.
-For MRPC, SST-2, and CoLA, the test set is the GLUE validation split~\citep{wang-etal-2018-glue} (since GLUE test labels are not publicly available); for AG News, we use its standard test split.
+For MRPC and CoLA, the test set is the GLUE validation split~\citep{wang-etal-2018-glue} (since GLUE test labels are not publicly available).
+For SST-2, we carve a test set of 7{,}600 samples from the unused training pool (after the train and calibration splits) to obtain a larger evaluation set; for AG News, we use its standard test split.
 Full dataset statistics are reported in Table~\ref{tab:dataset_stats} (Appendix~\ref{app:expe}).
 
 \textbf{Models.}
@@ -1313,8 +1314,8 @@ Figures~\ref{fig:ncal_ablation_full} and~\ref{fig:ncal_ablation_sp} extend Figur
 Figure~\ref{fig:ncal_ablation_full} uses the Mahalanobis distance score; Figure~\ref{fig:ncal_ablation_sp} uses the softmax probability score.
 
 The trends observed for DeBERTa in the main text hold across models: UM stays below the theoretical bound for moderate $n_{\mathrm{cal}}$, Platt scaling has rigidly high MCE, and all methods converge in ROCAUC for $n_{\mathrm{cal}} \geq 1000$.
-Comparing the two scores provides insight into Platt scaling's failure mode: because Platt scaling fits a sigmoid $\sigma(az+b)$, it is well-suited to SP scores (which are bounded in $[0,1]$ and roughly sigmoidal), but poorly suited to MD scores (which are unbounded and have a non-sigmoidal calibration map).
-Indeed, Platt scaling's MCE is substantially lower for SP than for MD across all models and datasets, confirming that its high MCE on MD is due to model misspecification rather than insufficient calibration data.
+Comparing the two scores confirms that Platt scaling's high MCE is not specific to unbounded scores: Platt MCE is similarly high for SP ($0.255$ at $n_{\mathrm{cal}}=10{,}000$) and MD ($0.220$), indicating that the sigmoid form is a poor model for the calibration map regardless of the score family.
+This rules out the hypothesis that Platt scaling fails only on non-sigmoidal, unbounded scores; the rigidity of the two-parameter sigmoid is the fundamental limitation.
 
 \begin{figure}[h]
 \centering
@@ -1326,8 +1327,27 @@ Indeed, Platt scaling's MCE is substantially lower for SP than for MD across all
 \begin{figure}[h]
 \centering
 \includegraphics[width=\linewidth]{figures/ncal_ablation_sp.pdf}
-\caption{Calibration sample size ablation --- softmax probability score. Same layout as Figure~\ref{fig:ncal_ablation_full}. Platt scaling's MCE is substantially lower than for the Mahalanobis score (Figure~\ref{fig:ncal_ablation_full}), confirming that its poor calibration on MD is due to sigmoid model misspecification.}
+\caption{Calibration sample size ablation --- softmax probability score. Same layout as Figure~\ref{fig:ncal_ablation_full}. Platt scaling's MCE remains high (comparable to or higher than for the Mahalanobis score), confirming that the sigmoid model is poorly suited to the calibration map regardless of the score family.}
 \label{fig:ncal_ablation_sp}
+\end{figure}
+
+Figures~\ref{fig:ncal_ablation_ece_md} and~\ref{fig:ncal_ablation_ece_sp} show the expected calibration error (ECE) as a function of $n_{\mathrm{cal}}$ for the same experimental setup.
+Unlike MCE, ECE decreases monotonically with $n_{\mathrm{cal}}$ for all three methods, since it averages calibration errors across bins rather than taking the maximum.
+Isotonic regression achieves the lowest ECE, followed by UM and Platt scaling.
+The ordering is consistent across both scores, reinforcing the conclusion that Platt scaling's parametric rigidity affects both average and worst-case calibration.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.65\linewidth]{figures/ncal_ablation_ece_md.pdf}
+\caption{ECE vs $n_{\mathrm{cal}}$ --- Mahalanobis distance score. Each row is one (model, dataset) pair. Each point aggregates 60 experiments (3 seeds $\times$ 20 draws). Shaded bands: $\pm 1$ std.}
+\label{fig:ncal_ablation_ece_md}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.65\linewidth]{figures/ncal_ablation_ece_sp.pdf}
+\caption{ECE vs $n_{\mathrm{cal}}$ --- softmax probability score. Same layout as Figure~\ref{fig:ncal_ablation_ece_md}.}
+\label{fig:ncal_ablation_ece_sp}
 \end{figure}
 
 \subsection{Hardware and Computational Resources}

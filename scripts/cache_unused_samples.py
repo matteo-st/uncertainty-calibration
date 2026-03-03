@@ -55,6 +55,7 @@ DATASET_CONFIGS = {
         "n_total": 67349,
         "n_train": 5735,
         "n_cal": 1000,
+        "n_test": 7600,
         "num_labels": 2,
         "max_length": 128,
     },
@@ -108,13 +109,15 @@ def get_unused_dataset(dataset_name, model_name, seed, max_length=128):
     rng = np.random.RandomState(seed)
     shuffled_indices = rng.permutation(n_total).tolist()
 
-    # Unused = everything after train + cal
-    start = cfg["n_train"] + cfg["n_cal"]
+    # Unused = everything after train + cal + test (if test carved from pool)
+    n_test = cfg.get("n_test", 0)
+    start = cfg["n_train"] + cfg["n_cal"] + n_test
     unused_indices = shuffled_indices[start:]
     n_unused = len(unused_indices)
     logger.info(
         f"{dataset_name} seed={seed}: {n_total} total, "
-        f"train={cfg['n_train']}, cal={cfg['n_cal']}, unused={n_unused}"
+        f"train={cfg['n_train']}, cal={cfg['n_cal']}, "
+        f"test={n_test}, unused={n_unused}"
     )
 
     # Select unused subset

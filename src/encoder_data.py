@@ -50,6 +50,7 @@ def load_encoder_dataset(
     model_name: str = "google/electra-base-discriminator",
     n_train: Optional[int] = None,
     n_cal: int = 600,
+    n_test: Optional[int] = None,
     max_length: int = 128,
     seed: int = 42,
 ) -> Dict:
@@ -64,6 +65,8 @@ def load_encoder_dataset(
         model_name: HuggingFace model name (determines tokenizer)
         n_train: Explicit train size. If None, uses all available minus n_cal.
         n_cal: Number of calibration samples (reserved from training set)
+        n_test: Explicit test size carved from training pool (SST-2 only).
+                If None, uses the default external test set.
         max_length: Maximum sequence length for tokenization
         seed: Random seed for shuffling before splitting
 
@@ -85,7 +88,7 @@ def load_encoder_dataset(
     if dataset_name not in loaders:
         raise ValueError(f"Unknown dataset: {dataset_name}. "
                          f"Supported: {list(loaders.keys())}")
-    return loaders[dataset_name](model_name, n_train, n_cal, max_length, seed)
+    return loaders[dataset_name](model_name, n_train, n_cal, n_test, max_length, seed)
 
 
 def load_mrpc(
@@ -99,7 +102,7 @@ def load_mrpc(
                                 max_length=max_length, seed=seed)
 
 
-def _load_mrpc(model_name, n_train, n_cal, max_length, seed) -> Dict:
+def _load_mrpc(model_name, n_train, n_cal, n_test, max_length, seed) -> Dict:
     """
     Load MRPC dataset with train/cal/test splits.
 
@@ -142,19 +145,23 @@ def _load_mrpc(model_name, n_train, n_cal, max_length, seed) -> Dict:
     }
 
 
-def _load_sst2(model_name, n_train, n_cal, max_length, seed) -> Dict:
+def _load_sst2(model_name, n_train, n_cal, n_test, max_length, seed) -> Dict:
     """
     Load SST2 dataset with train/cal/test splits.
 
     SST2 is a single-sentence task (binary sentiment, 2 classes).
-    Train set: 67,349 samples. Test set: GLUE validation (872 samples).
+    Train set: 67,349 samples.
+
+    If n_test is provided, the test set is carved from the training pool
+    (after train + cal), preserving the same shuffled indices so that
+    train and cal splits are unchanged. Otherwise, uses GLUE validation
+    (872 samples) as the test set.
     """
     logger.info("Loading SST2 dataset from GLUE...")
     raw_datasets = load_dataset("glue", "sst2")
     tokenizer = _load_tokenizer(model_name)
 
     full_train = raw_datasets["train"]
-    test_dataset = raw_datasets["validation"]
 
     def tokenize_fn(examples):
         return tokenizer(
@@ -164,9 +171,17 @@ def _load_sst2(model_name, n_train, n_cal, max_length, seed) -> Dict:
             truncation=True,
         )
 
-    train_dataset, cal_dataset = _split_train_cal(
-        full_train, n_train, n_cal, seed, dataset_name="SST2"
-    )
+    if n_test is not None:
+        # Carve test from training pool (after train + cal)
+        train_dataset, cal_dataset, test_dataset = _split_train_cal_test(
+            full_train, n_train, n_cal, n_test, seed, dataset_name="SST2"
+        )
+    else:
+        # Legacy: GLUE validation as test
+        test_dataset = raw_datasets["validation"]
+        train_dataset, cal_dataset = _split_train_cal(
+            full_train, n_train, n_cal, seed, dataset_name="SST2"
+        )
 
     train_dataset, cal_dataset, test_dataset = _finalize_splits(
         train_dataset, cal_dataset, test_dataset, tokenize_fn
@@ -184,7 +199,7 @@ def _load_sst2(model_name, n_train, n_cal, max_length, seed) -> Dict:
     }
 
 
-def _load_cola(model_name, n_train, n_cal, max_length, seed) -> Dict:
+def _load_cola(model_name, n_train, n_cal, n_test, max_length, seed) -> Dict:
     """
     Load CoLA dataset with train/cal/test splits.
 
@@ -226,7 +241,7 @@ def _load_cola(model_name, n_train, n_cal, max_length, seed) -> Dict:
     }
 
 
-def _load_agnews(model_name, n_train, n_cal, max_length, seed) -> Dict:
+def _load_agnews(model_name, n_train, n_cal, n_test, max_length, seed) -> Dict:
     """
     Load AG News dataset with train/cal/test splits.
 
@@ -318,6 +333,53 @@ def _split_train_cal(full_train, n_train, n_cal, seed, dataset_name):
     cal_dataset = full_train.select(cal_indices)
 
     return train_dataset, cal_dataset
+
+
+def _split_train_cal_test(full_train, n_train, n_cal, n_test, seed, dataset_name):
+    """
+    Split a full training set into train, calibration, and test subsets.
+
+    Uses the same shuffle logic as _split_train_cal so that train and cal
+    indices are identical — the test set is carved from the next n_test
+    indices after train + cal.
+
+    Args:
+        full_train: Full HuggingFace training Dataset
+        n_train: Explicit train size (required, cannot be None)
+        n_cal: Calibration set size
+        n_test: Test set size
+        seed: Random seed for shuffling
+        dataset_name: Name for logging
+
+    Returns:
+        (train_dataset, cal_dataset, test_dataset)
+    """
+    n_total = len(full_train)
+
+    if n_train is None:
+        raise ValueError("n_train must be specified when using n_test")
+    if n_train + n_cal + n_test > n_total:
+        raise ValueError(
+            f"n_train={n_train} + n_cal={n_cal} + n_test={n_test} = "
+            f"{n_train + n_cal + n_test} > total training size={n_total}"
+        )
+
+    rng = np.random.RandomState(seed)
+    shuffled_indices = rng.permutation(n_total).tolist()
+
+    train_indices = shuffled_indices[:n_train]
+    cal_indices = shuffled_indices[n_train:n_train + n_cal]
+    test_indices = shuffled_indices[n_train + n_cal:n_train + n_cal + n_test]
+    n_unused = n_total - n_train - n_cal - n_test
+
+    logger.info(f"{dataset_name} full training set: {n_total} samples")
+    logger.info(f"Split: train={n_train}, cal={n_cal}, test={n_test}, unused={n_unused}")
+
+    train_dataset = full_train.select(train_indices)
+    cal_dataset = full_train.select(cal_indices)
+    test_dataset = full_train.select(test_indices)
+
+    return train_dataset, cal_dataset, test_dataset
 
 
 def _finalize_splits(train_dataset, cal_dataset, test_dataset, tokenize_fn):

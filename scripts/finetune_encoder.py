@@ -86,6 +86,8 @@ def parse_args():
     # Data
     parser.add_argument("--n_cal", type=int, default=600,
                         help="Number of calibration samples from train set")
+    parser.add_argument("--n_test", type=int, default=None,
+                        help="Test set size carved from training pool (default: use external test set)")
     parser.add_argument("--max_length", type=int, default=128)
 
     # Training hyperparameters
@@ -141,6 +143,8 @@ def apply_config(args, config: dict, cli_args: set) -> None:
         _set("n_train", ds["n_train"])
     if "n_cal" in ds:
         _set("n_cal", ds["n_cal"])
+    if "n_test" in ds:
+        _set("n_test", ds["n_test"])
     if "max_length" in ds:
         _set("max_length", ds["max_length"])
 
@@ -223,6 +227,7 @@ def main():
     logger.info(f"Warmup ratio: {args.warmup_ratio}")
     logger.info(f"n_train: {args.n_train if args.n_train else 'all available'}")
     logger.info(f"n_cal: {args.n_cal}")
+    logger.info(f"n_test: {args.n_test if args.n_test else 'external test set'}")
     logger.info(f"Max length: {args.max_length}")
     logger.info(f"Seed: {args.seed}")
     logger.info(f"Cache dir: {cache_dir}")
@@ -240,6 +245,7 @@ def main():
         model_name=args.model_name,
         n_train=args.n_train,
         n_cal=args.n_cal,
+        n_test=args.n_test,
         max_length=args.max_length,
         seed=args.seed,
     )
