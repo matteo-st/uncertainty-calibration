@@ -265,25 +265,28 @@ Analysis across all 72 experiments (3 models × 4 datasets × 3 seeds × 2 score
 
 **MCE certificates** (averaged over 9 experiments per cell):
 
-| Dataset  | Score | B  | n_b (med) | MCE obs | CP cert | Theorem (H) |
-|----------|-------|----|-----------|---------|---------|-------------|
-| MRPC     | SP    | 16 | 22        | 0.211   | 0.638   | 0.255       |
-| MRPC     | MD    | 14 | 23        | 0.226   | 0.569   | 0.255       |
-| **SST-2**| SP    | 10 | 468       | 0.079   | **0.142** | 0.255     |
-| **SST-2**| MD    | 10 | 467       | 0.080   | **0.139** | 0.255     |
-| CoLA     | SP    | 15 | 61        | 0.133   | 0.328   | 0.255       |
-| CoLA     | MD    | 14 | 62        | 0.177   | 0.365   | 0.255       |
-| **AG News** | SP | 12 | 438       | 0.085   | **0.144** | 0.255     |
-| **AG News** | MD | 11 | 439       | 0.091   | **0.155** | 0.255     |
+- **B_unique** = number of distinct calibrated values on the test set. The UM calibrator has B=19 bins on the calibration set, but some bins share the same error count k_b/n_b, producing fewer than 19 unique output values (e.g., 10 for SST-2). This is the number of groups used for the test-set analysis.
+- **n_b (med)** = median number of test samples per group (≈ n_test / B_unique). This determines the CI width: larger groups → tighter bounds.
 
-**CI width** (max_b ε_b — estimation precision only):
+| Dataset  | Score | n_test | B_unique | n_b (med) | MCE obs | CP cert | Theorem (H) |
+|----------|-------|--------|----------|-----------|---------|---------|-------------|
+| MRPC     | SP    | 408    | 16       | 22        | 0.211   | 0.638   | 0.255       |
+| MRPC     | MD    | 408    | 14       | 23        | 0.226   | 0.569   | 0.255       |
+| **SST-2**| SP    | 7600   | 10       | 468       | 0.079   | **0.142** | 0.255     |
+| **SST-2**| MD    | 7600   | 10       | 467       | 0.080   | **0.139** | 0.255     |
+| CoLA     | SP    | 1043   | 15       | 61        | 0.133   | 0.328   | 0.255       |
+| CoLA     | MD    | 1043   | 14       | 62        | 0.177   | 0.365   | 0.255       |
+| **AG News** | SP | 7600   | 12       | 438       | 0.085   | **0.144** | 0.255     |
+| **AG News** | MD | 7600   | 11       | 439       | 0.091   | **0.155** | 0.255     |
 
-| Dataset   | Score | n_b (med) | ε_CP  | Theorem (H) | Ratio |
-|-----------|-------|-----------|-------|-------------|-------|
-| MRPC      | SP    | 22        | 0.497 | 0.255       | 1.95  |
-| SST-2     | SP    | 468       | 0.072 | 0.255       | 0.28  |
-| CoLA      | SP    | 61        | 0.225 | 0.255       | 0.88  |
-| AG News   | SP    | 438       | 0.073 | 0.255       | 0.29  |
+**CI width** (max_b ε_b — estimation precision only, SP score):
+
+| Dataset   | n_b (med) | ε_CP  | Theorem (H) | Ratio |
+|-----------|-----------|-------|-------------|-------|
+| MRPC      | 22        | 0.497 | 0.255       | 1.95  |
+| SST-2     | 468       | 0.072 | 0.255       | 0.28  |
+| CoLA      | 61        | 0.225 | 0.255       | 0.88  |
+| AG News   | 438       | 0.073 | 0.255       | 0.29  |
 
 **ECE certificates** (Σ_b w_b · (|p̂_test,b − t_b| + ε_b)):
 
