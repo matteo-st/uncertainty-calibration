@@ -321,7 +321,7 @@ Theorem bound (n_cal=1000, Hoeffding): **0.255** — the test-set CP certificate
 
 2. **For small test sets** (MRPC with n_test = 408): test-set bounds are **worse** than the theorem — each group has only n_b ≈ 22 samples, making the CIs larger than the theorem's ε from n_b ≈ 51.
 
-3. **The same principle applies to isotonic regression (step function)**: isotonic step produces B_iso ≈ 13 discrete values at n_cal = 1000, so test samples can be grouped identically. The bounds would be comparable to the UM results above (similar B, similar group sizes).
+3. **Isotonic regression (step function) produces much worse certificates**: see the dedicated section below. Although isotonic step produces B_iso ≈ 13 discrete values (similar B to UM), its groups have extremely uneven mass — the smallest groups can have as few as 1–3 test samples, leading to certificates 3–5× looser than UM.
 
 4. **Two different guarantees**:
    - **Theorem (a priori)**: before seeing test data, guarantees MCE_true ≤ ε_n. Uses n_cal only.
@@ -330,6 +330,175 @@ Theorem bound (n_cal=1000, Hoeffding): **0.255** — the test-set CP certificate
 ![MCE: Observed vs Test-set certificates vs Theorem bound](../results/testset_bounds/testset_bounds_mce_comparison.png)
 
 ![Test-set per-group bounds for UM calibration](../results/testset_bounds/testset_bounds_pergroup.png)
+
+## Test-Set Bounds: Isotonic Step vs Uniform Mass
+
+### Motivation
+
+The previous section showed that UM test-set certificates can be 43% tighter than the n_cal-based theorem when n_test is large. A natural question is: does the same approach work for isotonic regression (step function)?
+
+**Hypothesis**: Isotonic step does not control the mass of each group. PAV produces plateaus of varying width in score space. When projected onto the test distribution, some groups may have very few test samples, leading to wide CIs that dominate the MCE certificate.
+
+### Setup
+
+- Fit both UM and isotonic step on the same n_cal = 1000 calibration data
+- Apply each to the test set, group by discrete output values
+- Compute per-group Clopper-Pearson bounds with union bound (α = 0.05)
+- All 72 experiments (3 models × 4 datasets × 3 seeds × 2 scores)
+
+### Results
+
+#### 1. Group size distribution
+
+The key structural difference: UM produces groups with relatively uniform mass; isotonic step produces groups with highly unequal mass.
+
+| Dataset  | Score | n_test | B_iso | n_b min (iso) | n_b med (iso) | B_um | n_b min (UM) | n_b med (UM) |
+|----------|-------|--------|-------|---------------|---------------|------|--------------|--------------|
+| MRPC     | SP    | 408    | 12    | **2**         | 19            | 16   | 10           | 22           |
+| MRPC     | MD    | 408    | 14    | **2**         | 19            | 14   | 13           | 23           |
+| SST-2    | SP    | 7600   | 13    | **27**        | 298           | 10   | 329          | 468          |
+| SST-2    | MD    | 7600   | 12    | **36**        | 464           | 10   | 322          | 467          |
+| CoLA     | SP    | 1043   | 15    | **5**         | 43            | 15   | 37           | 61           |
+| CoLA     | MD    | 1043   | 13    | **3**         | 61            | 14   | 44           | 62           |
+| AG News  | SP    | 7600   | 13    | **13**        | 276           | 12   | 317          | 438          |
+| AG News  | MD    | 7600   | 13    | **25**        | 346           | 11   | 339          | 439          |
+
+(Averaged over 3 models × 3 seeds = 9 experiments per cell)
+
+**Key observation**: The isotonic minimum group sizes are 6–18× smaller than UM's. For MRPC/CoLA with MD, isotonic can have groups with just 1–3 test samples. Even on the large test sets (n_test = 7600), isotonic's smallest groups have ~13–36 samples vs UM's ~300+.
+
+![Group size distribution: Isotonic Step vs UM](../results/testset_bounds_isotonic/group_size_boxplots.png)
+
+#### 2. MCE certificates
+
+| Dataset   | Score | MCE obs (iso) | Cert CP (iso) | MCE obs (UM) | Cert CP (UM) | Theorem (H) | iso/thm | um/thm |
+|-----------|-------|---------------|---------------|--------------|--------------|-------------|---------|--------|
+| MRPC      | SP    | 0.456         | **1.245**     | 0.211        | 0.638        | 0.255       | 4.88    | 2.50   |
+| MRPC      | MD    | 0.558         | **1.461**     | 0.226        | 0.569        | 0.255       | 5.73    | 2.23   |
+| **SST-2** | SP    | 0.311         | **0.660**     | 0.079        | 0.142        | 0.255       | 2.59    | 0.56   |
+| **SST-2** | MD    | 0.241         | **0.507**     | 0.080        | 0.139        | 0.255       | 1.99    | 0.55   |
+| CoLA      | SP    | 0.361         | **0.937**     | 0.133        | 0.328        | 0.255       | 3.67    | 1.29   |
+| CoLA      | MD    | 0.490         | **1.265**     | 0.177        | 0.365        | 0.255       | 4.96    | 1.43   |
+| **AG News** | SP  | 0.448         | **0.859**     | 0.085        | 0.144        | 0.255       | 3.37    | 0.56   |
+| **AG News** | MD  | 0.305         | **0.648**     | 0.091        | 0.155        | 0.255       | 2.54    | 0.61   |
+
+**Isotonic MCE certificates are 3–6× the theorem bound**, compared to UM which is 0.5–2.5× the theorem. Even on large test sets (SST-2, AG News), the isotonic certificate (0.5–0.9) is far worse than UM's (0.14–0.16).
+
+![MCE certificates: Isotonic Step vs UM vs Theorem](../results/testset_bounds_isotonic/mce_comparison_iso_vs_um.png)
+
+#### 3. CI widths — driven by the smallest group
+
+| Dataset   | Score | n_b min (iso) | ε_iso  | n_b min (UM) | ε_um   | ε_iso / ε_um |
+|-----------|-------|---------------|--------|--------------|--------|--------------|
+| MRPC      | SP    | 2             | 0.842  | 10           | 0.497  | 1.69         |
+| MRPC      | MD    | 2             | 0.939  | 13           | 0.423  | 2.22         |
+| SST-2     | SP    | 27            | 0.383  | 329          | 0.072  | **5.32**     |
+| SST-2     | MD    | 36            | 0.285  | 322          | 0.073  | **3.91**     |
+| CoLA      | SP    | 5             | 0.644  | 37           | 0.225  | 2.86         |
+| CoLA      | MD    | 3             | 0.834  | 44           | 0.221  | **3.77**     |
+| AG News   | SP    | 13            | 0.513  | 317          | 0.073  | **7.01**     |
+| AG News   | MD    | 25            | 0.357  | 339          | 0.072  | **4.94**     |
+
+The isotonic CI width (max_b ε_b) is **2–7× larger** than UM's, driven entirely by the smallest groups.
+
+#### 4. ECE certificates
+
+| Dataset   | Score | ECE obs (iso) | Cert (iso) | ECE obs (UM) | Cert (UM) |
+|-----------|-------|---------------|------------|--------------|-----------|
+| SST-2     | SP    | 0.015         | 0.044      | 0.021        | 0.047     |
+| SST-2     | MD    | 0.015         | 0.042      | 0.019        | 0.046     |
+| AG News   | SP    | 0.018         | 0.048      | 0.023        | 0.053     |
+| AG News   | MD    | 0.017         | 0.047      | 0.022        | 0.050     |
+
+**ECE certificates are comparable** between isotonic and UM. The small groups that hurt MCE have low weight (few samples), so they barely affect the weighted average. Isotonic ECE is actually slightly better because it has lower observed ECE (more groups → finer resolution).
+
+#### 5. Worst group analysis
+
+For each experiment, which group drives the MCE certificate?
+
+| Dataset   | Score | Iso worst n_b | Iso worst t | Iso cert | UM worst n_b | UM worst t | UM cert |
+|-----------|-------|---------------|-------------|----------|--------------|------------|---------|
+| MRPC      | SP    | 3             | 0.476       | 1.245    | 12           | 0.306      | 0.638   |
+| MRPC      | MD    | 2             | 0.357       | 1.461    | 18           | 0.392      | 0.569   |
+| SST-2     | SP    | 29            | 0.822       | 0.660    | 417          | 0.283      | 0.142   |
+| SST-2     | MD    | 36            | 0.478       | 0.507    | 417          | 0.286      | 0.139   |
+| CoLA      | SP    | 6             | 0.514       | 0.937    | 49           | 0.287      | 0.328   |
+| CoLA      | MD    | 4             | 0.688       | 1.265    | 61           | 0.223      | 0.365   |
+| AG News   | SP    | 19            | 0.944       | 0.859    | 378          | 0.359      | 0.144   |
+| AG News   | MD    | 26            | 0.859       | 0.648    | 412          | 0.380      | 0.155   |
+
+**Two compounding problems** for isotonic step:
+1. The worst group has **very few test samples** (2–36 for iso vs 12–417 for UM) → large CI width
+2. The worst group has **high calibrated value t** (0.35–0.94 for iso vs 0.22–0.39 for UM) → high observed calibration error |p̂ − t|
+
+The isotonic worst groups correspond to **extreme PAV plateaus** in the high-score tail where few test samples land. These are scores where the model is most uncertain, but the calibration map assigns a specific probability based on sparse calibration data. On the test set, these groups have too few samples to verify the calibration.
+
+#### 6. Per-group detail — DeBERTa SST-2 seed 42 SP
+
+**Isotonic Step** (11 groups):
+
+| t_b    | n_b  | %test | p_test | \|err\| | ε_CP   | cert   |
+|--------|------|-------|--------|---------|--------|--------|
+| 0.000  | 572  | 7.5%  | 0.004  | 0.004   | 0.014  | 0.018  |
+| 0.008  | 2917 | 38.4% | 0.011  | 0.003   | 0.007  | 0.010  |
+| 0.019  | 1545 | 20.3% | 0.014  | 0.005   | 0.011  | 0.015  |
+| 0.023  | 335  | 4.4%  | 0.036  | 0.013   | 0.039  | 0.052  |
+| 0.050  | 1082 | 14.2% | 0.080  | 0.030   | 0.026  | 0.056  |
+| 0.143  | 98   | 1.3%  | 0.122  | 0.020   | 0.121  | **0.141** |
+| 0.154  | 189  | 2.5%  | 0.169  | 0.016   | 0.090  | 0.105  |
+| 0.236  | 466  | 6.1%  | 0.225  | 0.011   | 0.059  | 0.070  |
+| 0.348  | 173  | 2.3%  | 0.376  | 0.028   | 0.110  | 0.138  |
+| 0.364  | 90   | 1.2%  | 0.500  | 0.136   | 0.151  | **0.287** |
+| 0.385  | 133  | 1.8%  | 0.481  | 0.097   | 0.125  | 0.222  |
+| **MCE**|      |       |        | 0.136   |        | **0.287** |
+
+**Uniform Mass** (10 groups):
+
+| t_b    | n_b  | %test | p_test | \|err\| | ε_CP   | cert   |
+|--------|------|-------|--------|---------|--------|--------|
+| 0.000  | 2461 | 32.4% | 0.009  | 0.009   | 0.007  | 0.016  |
+| 0.019  | 1738 | 22.9% | 0.020  | 0.001   | 0.011  | 0.012  |
+| 0.019  | 789  | 10.4% | 0.009  | 0.010   | 0.014  | 0.024  |
+| 0.038  | 344  | 4.5%  | 0.012  | 0.026   | 0.027  | 0.053  |
+| 0.038  | 405  | 5.3%  | 0.084  | 0.046   | 0.046  | 0.091  |
+| 0.057  | 391  | 5.1%  | 0.113  | 0.056   | 0.052  | 0.108  |
+| 0.075  | 419  | 5.5%  | 0.050  | 0.025   | 0.038  | 0.063  |
+| 0.212  | 276  | 3.6%  | 0.167  | 0.045   | 0.071  | 0.116  |
+| 0.226  | 321  | 4.2%  | 0.224  | 0.002   | 0.071  | 0.074  |
+| 0.321  | 456  | 6.0%  | 0.423  | 0.103   | 0.067  | **0.169** |
+| **MCE**|      |       |        | 0.103   |        | **0.169** |
+
+The isotonic MCE certificate (0.287) is driven by a group with n_b = 90 and t_b = 0.364 where only 1.2% of test samples land. The UM certificate (0.169) is driven by a group with n_b = 456, allowing a much tighter CI.
+
+![Per-group test-set bounds: Isotonic Step vs UM](../results/testset_bounds_isotonic/pergroup_iso_vs_um_sst2.png)
+
+![CP bound vs group size: Isotonic Step vs UM](../results/testset_bounds_isotonic/nb_vs_eps_iso_vs_um.png)
+
+### Analysis: why isotonic step certificates are much looser
+
+**Root cause**: Isotonic regression fits a non-decreasing step function on the calibration data (PAV). The breakpoint locations are determined by the calibration score distribution, not the test score distribution. When the test distribution differs from cal — particularly in the tails — some PAV plateaus catch very few test samples.
+
+Three compounding effects:
+
+1. **Uncontrolled mass**: PAV creates plateaus wherever the monotonicity constraint is violated. High-uncertainty samples (tail of the score distribution) typically have few calibration examples, producing narrow plateaus. On the test set, these narrow plateaus may catch only 1–50 samples (vs 300+ for UM groups on large test sets).
+
+2. **High calibration error in tail groups**: The worst isotonic groups have t_b ≈ 0.4–0.9 (high predicted error probability). These are calibrated from sparse cal data and may have large |p̂_test − t_b| — the calibration value is unreliable precisely where it matters most.
+
+3. **MCE = max over groups**: The MCE certificate is determined by the single worst group. For UM, the worst group still has hundreds of test samples; for isotonic, it may have < 30, inflating the CI by 3–7×.
+
+**Contrast with ECE**: The ECE certificate (weighted average) is comparable because the small groups have negligible weight. The problem is specific to worst-case (MCE) guarantees.
+
+### Summary comparison
+
+| Metric | Isotonic Step | Uniform Mass | Ratio |
+|--------|:------------:|:------------:|:-----:|
+| MCE cert (SST-2/AG News, CP) | 0.669 | 0.145 | **4.6×** |
+| MCE cert (all datasets, CP) | 0.948 | 0.310 | **3.1×** |
+| ECE cert (SST-2/AG News, CP) | 0.045 | 0.049 | 0.9× |
+| Min group size (SST-2/AG News) | 30 | 327 | **0.09×** |
+| Min group size (MRPC/CoLA) | 3 | 27 | **0.10×** |
+
+**Conclusion**: Isotonic regression (step function) does not admit useful test-set MCE certificates because it does not control the mass of its output groups. UM's mass control is not just a computational convenience — it is **essential** for tight worst-case calibration guarantees on the test set.
 
 ## Recommendation for the Paper
 
@@ -365,12 +534,22 @@ Restate as: ε_b satisfying n_b · d(p̂_b + ε_b ‖ p̂_b) = log(2B/α). This 
 - `results/concentration_bounds/concentration_bounds_ncal_overlay.pdf` — bounds overlaid on n_cal ablation
 - `results/concentration_bounds/concentration_bounds_mce_vs_ncal.pdf` — theoretical MCE bound vs n_cal
 
-### Test-set bounds (post-hoc certificates)
-- `scripts/investigate_testset_bounds.py` — Test-set bounds analysis script
+### Test-set bounds — UM (post-hoc certificates)
+- `scripts/investigate_testset_bounds.py` — Test-set bounds analysis (UM only, runs from results/paper_metrics/)
 - `results/testset_bounds/testset_bounds_analysis.json` — 72 experiment results
 - `results/testset_bounds/testset_bounds_pergroup.pdf` — Per-group bounds vs actual error (DeBERTa, all datasets)
 - `results/testset_bounds/testset_bounds_mce_comparison.pdf` — Bar chart: observed MCE vs certificates vs theorem
 - `results/testset_bounds/testset_bounds_nb_vs_eps.pdf` — Group size vs bound tightness
+
+### Test-set bounds — Isotonic Step vs UM comparison
+- `scripts/investigate_testset_bounds_isotonic.py` — Comparison script (runs from cache/paper/ on server)
+- `results/testset_bounds_isotonic/testset_bounds_isotonic_full.json` — 72 experiments with per-group detail
+- `results/testset_bounds_isotonic/testset_bounds_isotonic_summary.json` — Summary without per-group data
+- `results/testset_bounds_isotonic/mce_comparison_iso_vs_um.pdf` — MCE certificate bar chart (iso vs UM vs theorem)
+- `results/testset_bounds_isotonic/group_size_boxplots.pdf` — Group size distribution box plots
+- `results/testset_bounds_isotonic/pergroup_iso_vs_um_sst2.pdf` — Per-group bounds (SST-2, iso vs UM side-by-side)
+- `results/testset_bounds_isotonic/nb_vs_eps_iso_vs_um.pdf` — CP bound vs group size scatter
+- `results/testset_bounds_isotonic/group_sizes_comparison.pdf` — Sorted group size bar chart
 
 ## References
 
