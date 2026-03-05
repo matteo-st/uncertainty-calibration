@@ -500,6 +500,78 @@ Three compounding effects:
 
 **Conclusion**: Isotonic regression (step function) does not admit useful test-set MCE certificates because it does not control the mass of its output groups. UM's mass control is not just a computational convenience — it is **essential** for tight worst-case calibration guarantees on the test set.
 
+## Pooled Certificates: Leveraging Both Cal and Test Data
+
+### Motivation
+
+The cal-only bound uses n_cal samples but ignores test data. The test-only certificate uses n_test samples but ignores the cal data that defined the calibrator. Can we **pool** both to get tighter certificates?
+
+This is attractive because the test set can serve double duty: evaluate discrimination (ROCAUC) AND contribute to calibration guarantees.
+
+### Method
+
+For each UM bin b, the calibrated value is t_b = p̂_cal,b (sample mean of cal errors in bin b). The true calibration error is |p_b − t_b|. By the triangle inequality:
+
+|p_b − t_b| ≤ |p_b − p̂_pool,b| + |p̂_pool,b − t_b|
+
+where p̂_pool,b = (k_b^cal + k_b^test) / (n_b^cal + n_b^test) is the pooled estimator. All samples (cal + test) in bin b are i.i.d. Bernoulli(p_b) conditional on the bin boundaries, so the first term admits a concentration bound with n_b^pool = n_b^cal + n_b^test samples. The second term is observed:
+
+|p̂_pool,b − t_b| = (n_b^test / n_b^pool) · |p̂_test,b − t_b|
+
+This gives three valid certificates per bin:
+
+1. **Cal-only**: ε(n_b^cal, δ_b)
+2. **Test-only**: |p̂_test,b − t_b| + ε(n_b^test, δ_b)
+3. **Pooled**: (n_b^test / n_b^pool) · |p̂_test,b − t_b| + ε(n_b^pool, δ_b)
+
+The **best-of-3** takes the minimum per bin (all are valid upper bounds on the same |p_b − t_b|, so their minimum is also valid — no additional union bound needed).
+
+**Validity of pooling**: Conditional on the bin boundaries (determined by cal scores), all errors in bin b — from cal and test alike — are i.i.d. Bernoulli(p_b). The Hoeffding, KL-Chernoff, and Clopper-Pearson bounds all apply to the pooled samples.
+
+### Synthetic validation
+
+Synthetic data with known true P(error | score) (sigmoid, ~7–15% overall error), 2000 Monte Carlo repeats, Clopper-Pearson bounds, α = 0.05.
+
+**Coverage** (should be ≥ 0.95):
+
+All three certificates maintain ≥ 0.993 coverage across all (n_cal, n_test) combinations. The bounds are valid.
+
+**MCE certificate tightness** (lower = better):
+
+| n_cal | n_test | True MCE | Cal-only | Test-only | Pooled  | Best-of-3 | pool/test |
+|-------|--------|----------|----------|-----------|---------|-----------|-----------|
+| 1000  | 50     | 0.097    | 0.214    | 1.484     | 0.225   | **0.214** | 0.15      |
+| 1000  | 200    | 0.097    | 0.214    | 0.868     | 0.227   | **0.212** | 0.26      |
+| 1000  | 500    | 0.097    | 0.214    | 0.507     | 0.222   | **0.207** | 0.44      |
+| 1000  | 1000   | 0.097    | 0.214    | 0.353     | 0.209   | **0.199** | 0.59      |
+| 1000  | 5000   | 0.097    | 0.214    | 0.189     | 0.163   | **0.161** | 0.86      |
+| 500   | 1000   | 0.117    | 0.266    | 0.325     | 0.234   | **0.227** | 0.72      |
+| 500   | 5000   | 0.117    | 0.266    | 0.194     | 0.179   | **0.177** | 0.92      |
+| 100   | 500    | 0.171    | 0.453    | 0.389     | 0.325   | **0.320** | 0.84      |
+| 100   | 5000   | 0.171    | 0.453    | 0.222     | 0.218   | **0.218** | 0.98      |
+
+![MCE certificates: Cal-only vs Test-only vs Pooled](../results/pooled_bounds/pooled_certificates_vs_ntest.png)
+
+### Key findings
+
+1. **Pooled is always better than test-only** (ratio 0.15–0.98). The gain is largest when n_cal ≫ n_test (cal data dominates the pool).
+
+2. **Best-of-3 is a free lunch**: always at least as good as cal-only, strictly better when n_test is non-trivial. At n_cal = 1000, n_test = 5000: **25% tighter** than cal-only.
+
+3. **When n_test is small** (n_test ≤ n_cal/B ≈ 50), pooled ≈ cal-only (the data-dependent term adds noise, but best-of-3 falls back to cal-only).
+
+4. **When n_test is large** (n_test ≫ n_cal), pooled ≈ test-only (test data dominates). The benefit of pooling is marginal.
+
+5. **The sweet spot** is n_test ≈ n_cal (equal-sized splits), where pooling gives 30–40% improvement over test-only and 5–15% improvement over cal-only.
+
+![Pooled/Test-only ratio vs n_test](../results/pooled_bounds/pooled_ratio_vs_ntest.png)
+
+![Coverage of MCE certificates](../results/pooled_bounds/pooled_coverage_vs_ntest.png)
+
+### Practical implication
+
+A practitioner who wants to evaluate **both** discrimination (ROCAUC on test) and calibration (MCE guarantee) can use the same test set for both purposes. The best-of-3 certificate combines the a priori guarantee from n_cal with the post-hoc information from n_test, giving the tightest valid bound in all regimes.
+
 ## Recommendation for the Paper
 
 ### Option A: Keep Hoeffding, cite tighter alternatives in discussion
@@ -550,6 +622,13 @@ Restate as: ε_b satisfying n_b · d(p̂_b + ε_b ‖ p̂_b) = log(2B/α). This 
 - `results/testset_bounds_isotonic/pergroup_iso_vs_um_sst2.pdf` — Per-group bounds (SST-2, iso vs UM side-by-side)
 - `results/testset_bounds_isotonic/nb_vs_eps_iso_vs_um.pdf` — CP bound vs group size scatter
 - `results/testset_bounds_isotonic/group_sizes_comparison.pdf` — Sorted group size bar chart
+
+### Pooled certificates (synthetic validation)
+- `scripts/investigate_pooled_bounds.py` — Synthetic experiment (runs locally, no server needed)
+- `results/pooled_bounds/pooled_bounds_results.json` — Full results (21 configurations × 2000 repeats)
+- `results/pooled_bounds/pooled_certificates_vs_ntest.pdf` — Certificate tightness vs n_test (3 panels)
+- `results/pooled_bounds/pooled_coverage_vs_ntest.pdf` — Coverage validation
+- `results/pooled_bounds/pooled_ratio_vs_ntest.pdf` — Pooled/test-only improvement ratio
 
 ## References
 
